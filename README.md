@@ -8,6 +8,13 @@ Unlike standard voice assistants, **features an Agentic Workflow**: it doesn't j
 
 ## 🚀 Features & Commands
 
+### GUI Features
+- Shows the **current time**
+- Shows the **CPU load** In percentages
+- Shows the **RAM usage** In percentages
+- Shows how much **space is free** on the disk (in GB)
+- Shows the current **Local weather** temperature
+
 ### 🤖 Smart commands (you dont need to say this exact words, the AI will understand it)
 **For this commands , you can say a few together and they will all be executed**
 
