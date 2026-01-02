@@ -6,6 +6,27 @@ An advanced, Iron Man-inspired desktop AI assistant built with Python.
 Unlike standard voice assistants, **features an Agentic Workflow**: it doesn't just chat; it intelligently classifies your intent, plans a series of actions in JSON, and executes them on your PC in real-time.
 <img width="1913" height="976" alt="image" src="https://github.com/user-attachments/assets/6ddb14de-41ee-497c-b41f-6be9aafb6e20" />
 
+## 🚀 Features & Commands
+
+### 🤖 Smart commands (you dont need to say this exact words, the AI will understand it)
+**For this commands , you can say a few together and they will all be executed**
+
+**For example:** Jarvis, open the website youtube , set volume to 30% and also close steam
+
+ - **Open App <app_name>** : Can open (almost) any App you tell it using `AppOpener`
+ - **Close App <app_name>**: Terminates the .exe file of the application
+ - **Open File <path>**: Opens the given file
+ - **Set Volume <level>**: Sets the computers volume to be {level}%
+ - **Lock System**: Locking the computer
+ - **Open Website <url_name>**: Opens the given website , you dont need to say to full website , just the name (like open website google)
+
+### 🛠️ Hardcoded commands (Need to be in the exact order)
+ - **Open Website <url>**: Opens the given url , adds http:// and .com if there isnt.
+ - **Open <app_name>**:  Can open (almost) any App you tell it using `AppOpener`
+ - **Lock computer**: Locking the computer
+ - **Fix this code**: Extracting the clipboard content, telling the AI to fix it, then coping it back to the clipboard
+ - **work mode**: Opens VSCode and Gemini
+ - **Matrix Protocol**: Opens a CMD window in green and writing every file in root (seems like hacking)
 
 ## 🧠 Core Architecture (The Brain)
 
@@ -34,20 +55,6 @@ Getting **speech/text** input → Checking for **Hardcoded commands** → decidi
  - If **CHAT**: Sends the input to Gemma
  - If **PLAN**: Creats a json formated list of tasks , parses them and executes them (if possible)
 
-## 🚀 Features
-
-### 🤖 Intelligent Automation
-* **Smart App Launcher:** Uses `AppOpener` to find and launch any installed application (e.g., "Open Steam", "Launch VS Code").
-* **System Control:** Lock workstation, manage volume (via `pycaw`), and control browser tabs.
-* **Clipboard Intelligence:** "Fix this code" command reads your clipboard, debugs the code using AI, and pastes the fix back.
-
-### 🗣️ Natural Interaction
-* **Neural Voice:** Uses **Edge-TTS** for a high-quality, low-latency British/American voice.
-* **Continuous Listening:** Smart Voice Activity Detection (VAD) that listens when you speak and pauses when you stop.
-
-### 🛡️ Special Protocols
-* **Matrix Protocol:** Initiates a visual "hacking" sequence in the terminal.
-* **Work Mode:** Automatically opens VS Code and Gemini to boost productivity.
 
 ## 🛠️ Tech Stack
 
