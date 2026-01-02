@@ -125,16 +125,19 @@ def process_hardcoded_command(command):
     #Checks for hardcoded commands. Returns response string or None.
     command = command.lower()
     if "open website" in command:
-        url = command.lower().split("open website ", 1)[1].strip()
-        if not (url.startswith("http://") or url.startswith("https://")):
-            url = "http://" + url
+        try:
+            url = command.lower().split("open website ", 1)[1].strip()
+            if not (url.startswith("http://") or url.startswith("https://")):
+                url = "http://" + url
 
-        if not (url.endswith(".com") or url.endswith(".org") or url.endswith(".il")):
-            url += ".com"
+            if not (url.endswith(".com") or url.endswith(".org") or url.endswith(".il")):
+                url += ".com"
 
-        webbrowser.open(url)
-        add_logs(f"Action Taken: Opened Website {url}")
-        return f"Yes Sir, opening website {url}."
+            webbrowser.open(url)
+            add_logs(f"Action Taken: Opened Website {url}")
+            return f"Yes Sir, opening website {url}."
+        except:
+            return None
     
     elif "open" in command:
         app_name = command.lower().split("open ", 1)[1].strip()
@@ -143,7 +146,7 @@ def process_hardcoded_command(command):
             add_logs(f"Action Taken: Opened {app_name}")
             return f"Opening {app_name}."
         except:
-            return f"I couldn't find {app_name} installed on your system."
+            return None
         
     elif "lock computer" in command:
         subprocess.Popen('rundll32.exe user32.dll,LockWorkStation')
@@ -215,7 +218,8 @@ def parse_and_execute_plan(plan_json):
             app_name = params.get("app_name")
             if app_name:
                 try:
-                    subprocess.run(["taskkill", "/IM", f"{app_name}.exe", "/F"])
+                    path = subprocess.check_output(["where", app_name], shell=True).decode().strip()
+                    subprocess.run(["taskkill", "/IM", path, "/F"])
                     add_logs(f"Action Taken: Closed {app_name} as per plan.")
                     results.append({'action': action, 'status': 'success'})
                 except Exception as e:
