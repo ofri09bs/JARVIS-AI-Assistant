@@ -2,38 +2,67 @@
 
 **Just A Rather Very Intelligent System**
 
-A fully functional, Iron Man-inspired desktop AI assistant built with Python. This project combines a futuristic **PyQt6 GUI**, real-time **Audio Visualization**, and **Generative AI** (Google Gemini) to create an immersive voice assistant experience.
-This project was made with **Vibe-Coding** for fun!
+An advanced, Iron Man-inspired desktop AI assistant built with Python.
+Unlike standard voice assistants, **features an Agentic Workflow**: it doesn't just chat; it intelligently classifies your intent, plans a series of actions in JSON, and executes them on your PC in real-time.
 <img width="1913" height="976" alt="image" src="https://github.com/user-attachments/assets/6ddb14de-41ee-497c-b41f-6be9aafb6e20" />
 
 
+## 🧠 Core Architecture (The Brain)
+
+This project uses a **Router-Planner-Executor** model powered by **Google Gemma**:
+
+1.  **Intent Classification:** The AI analyzes your voice command to decide if it's a **CHAT** (casual conversation) or a **PLAN** (task execution).
+2.  **JSON Planner:** If a task is detected, it generates a structured JSON plan breaking down the goal into steps (e.g., "Open Spotify", "Set Volume to 50%", "Lock Screen") in the next format:
+   ```
+{
+   "goal": string,
+   "steps": [
+     {
+       "action": string,
+        ....
+       "params": object
+     }
+    ]
+ }
+```
+4.  **Executor:** A Python engine parses the JSON and performs the actions using system libraries.
+
+## Core Workflow:
+
+Getting **speech/text** input → Checking for **Hardcoded commands** → deciding if you want to **CHAT** or to **PLAN** a series of tasks 
+
+ - If **CHAT**: Sends the input to Gemma
+ - If **PLAN**: Creats a json formated list of tasks , parses them and executes them (if possible)
+
 ## 🚀 Features
 
-* **🧠 Advanced AI Brain:** Powered by **Google Gemma (gemma-3-27b)** for natural, context-aware conversations.
-* **🗣️ Neural Voice:** Uses **Edge-TTS** to provide a high-quality, near-human voice (Microsoft Christopher Neural) with low latency.
-* **👂 Smart Listening (VAD):** Custom Voice Activity Detection engine using `sounddevice` and `numpy`. It detects when you speak and stops automatically when you finish—no fixed timers.
-* **📊 Real-Time Visualizer:** A dual-mirrored FFT audio spectrum that reacts instantly to voice and system sounds.
-* **🖥️ Sci-Fi GUI:** A custom **PyQt6** interface featuring:
-    * Arc Reactor animation.
-    * Live System stats (CPU, RAM, Disk).
-    * Glass-morphism design elements.
-* **⚙️ Automation:** Built-in command routing for PC control (YouTube, Google, System Lock, etc.).
+### 🤖 Intelligent Automation
+* **Smart App Launcher:** Uses `AppOpener` to find and launch any installed application (e.g., "Open Steam", "Launch VS Code").
+* **System Control:** Lock workstation, manage volume (via `pycaw`), and control browser tabs.
+* **Clipboard Intelligence:** "Fix this code" command reads your clipboard, debugs the code using AI, and pastes the fix back.
+
+### 🗣️ Natural Interaction
+* **Neural Voice:** Uses **Edge-TTS** for a high-quality, low-latency British/American voice.
+* **Continuous Listening:** Smart Voice Activity Detection (VAD) that listens when you speak and pauses when you stop.
+
+### 🛡️ Special Protocols
+* **Matrix Protocol:** Initiates a visual "hacking" sequence in the terminal.
+* **Work Mode:** Automatically opens VS Code and Gemini to boost productivity.
 
 ## 🛠️ Tech Stack
 
-* **Language:** Python 3.14 (Compatible with 3.10+)
-* **GUI:** PyQt6
-* **Audio Processing:** SoundDevice, NumPy, SciPy
-* **Speech Recognition:** Google Speech Recognition API
-* **Text-to-Speech:** Edge-TTS (Cloud-based Neural Voices), Pygame (Playback)
+* **Core:** Python 3.14
 * **AI Model:** Google Generative AI (`google-generativeai`)
+* **GUI:** PyQt6 (Modern Glass-morphism UI)
+* **Automation:** `AppOpener`, `pycaw`, `pyperclip`, `webbrowser`, `subprocess`
+* **Audio:** `sounddevice`, `numpy` (VAD), `edge-tts`
 
 ## 📂 Project Structure
 
 ```text
 📁 JARVIS-SYSTEM
 │
-├── main.py                 # Entry point. Handles GUI, Threading, and logic integration.
+├── jarvis_interface.py                 # Entry point. Handles GUI, Threading, and logic integration.
 ├── jarvis_brain.py         # AI Logic. Handles API connection and command routing.
 ├── jarvis_voice.py         # Hearing & Speaking. VAD logic, TTS generation, and cleanup.
 ├── jarvis_visualizer.py    # FFT Logic. Custom QWidget for the audio spectrum.
@@ -55,7 +84,7 @@ cd JARVIS-AI-Assistent
 
 This project avoids pyaudio due to compatibility issues on newer Python versions. It uses sounddevice instead.
 ```
-pip install PyQt6 sounddevice numpy scipy speechrecognition edge-tts pygame google-generativeai psutil glob2
+pip install -r requirements.txt
 ```
 
 **3. Setup API Key**
