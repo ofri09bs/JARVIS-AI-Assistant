@@ -99,7 +99,6 @@ def listen_dynamic():
                     audio_buffer.append(data)
                 
                 else:
-                    # שקט
                     if has_started_speaking:
                         audio_buffer.append(data) 
                         

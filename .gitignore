@@ -1,1 +1,16 @@
 .env
+#every file that starts with tts_ and ends with .mp3
+tts_*.mp3
+# Ignore temporary voice input file
+temp_voice.wav
+# Ignore any other temporary audio files
+*.wav
+*.mp3
+# Ignore log files
+*.log
+logs/*.log
+# Ignore compiled Python files
+*.pyc
+__pycache__/
+
+temp.py

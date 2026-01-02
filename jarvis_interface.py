@@ -4,6 +4,7 @@ import datetime
 import threading
 import queue
 import os
+import requests
 
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QProgressBar, QTextEdit, QLineEdit, QFrame,
@@ -240,6 +241,26 @@ def voice_loop_task():
             break
 
 
+def get_current_temperature(lat=32.72, lon=35.29, callback=None):
+    try:
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
+        response = requests.get(url, timeout=5).json()
+        temp = response.get("current_weather", {}).get("temperature", "N/A")
+        if callback:
+            callback(temp)
+    except Exception as e:
+        print(f"[Weather Error]: {e}")
+        if callback:
+            callback("N/A")
+
+def weather_callback(data):
+    if data != "N/A":
+        ui_components['weather_val'].setText(f"{data}°C")
+    else:
+        ui_components['weather_val'].setText("N/A")
+
+threading.Thread(target=get_current_temperature, args=(32.72, 35.29, weather_callback), daemon=True).start()
+
 def update_system_stats():
     cpu = psutil.cpu_percent()
     ui_components['cpu_val'].setText(f"{cpu}%")
@@ -252,7 +273,6 @@ def update_system_stats():
     percent = hdd.percent
     ui_components['disk_val'].setText(f"{int(free_gb)} GB Free")
     ui_components['disk_bar'].setValue(int(percent))
-    ui_components['weather_val'].setText("24.5°C") 
     now = datetime.datetime.now()
     ui_components['time_lbl'].setText(now.strftime("%H:%M:%S"))
 
@@ -319,39 +339,28 @@ def main():
     visualizer = jarvis_visualizer.AudioVisualizer()
     col_center.addWidget(visualizer) 
     col_center.addSpacing(10) 
-    # === RIGHT COLUMN (Chat and mic) ===
+   # === RIGHT COLUMN (Chat and mic) ===
     col_right = QVBoxLayout()
     panel_chat = QFrame(); panel_chat.setObjectName("Panel")
     chat_layout = QVBoxLayout(panel_chat)
     
+    # 1. Title
     lbl_chat = QLabel("SECURE LINK"); lbl_chat.setObjectName("Title"); chat_layout.addWidget(lbl_chat)
-    chat_box = QTextEdit(); chat_box.setReadOnly(True); chat_layout.addWidget(chat_box)
+    
+    chat_box = QTextEdit(); chat_box.setReadOnly(True); 
+    chat_layout.addWidget(chat_box, 1) 
     
     # --- Input Area Layout (Row) ---
     input_layout = QHBoxLayout()
     
-    input_field = QLineEdit(); input_field.setPlaceholderText("Execute command protocol...")
+    # 3. Input field
+    input_field = QLineEdit()
+    input_field.setPlaceholderText("Execute command protocol...")
+    input_field.setMinimumHeight(40) 
     input_field.returnPressed.connect(handle_user_input)
     
-    # Mic Button
+    # 4. Microphone button
     from PyQt6.QtWidgets import QPushButton
-    btn_mic = QPushButton("🎤")
-    btn_mic.setFixedSize(40, 40)
-    # Style the button to look cool
-    btn_mic.setStyleSheet(f"""
-        QPushButton {{
-            background-color: {COLOR_PANEL_TRANSPARENT.name()};
-            color: {COLOR_ACCENT};
-            border: 1px solid {COLOR_ACCENT};
-            border-radius: 20px;
-            font-size: 16px;
-        }}
-        QPushButton:hover {{
-            background-color: {COLOR_ACCENT};
-            color: black;
-        }}
-    """)
-
     btn_mic = QPushButton("🎤")
     btn_mic.setFixedSize(40, 40)
     btn_mic.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -364,22 +373,22 @@ def main():
             font-size: 16px;
         }}
     """)
-    # Connect to the new toggle function
+    # Connecting to the toggle function
     btn_mic.clicked.connect(toggle_voice_mode) 
     
-    input_layout.addWidget(input_field)
+    input_layout.addWidget(input_field) 
     input_layout.addWidget(btn_mic)
     
-    # Save button to global dictionary so we can change its color later
-    ui_components['mic_btn'] = btn_mic
+    # Adding the input row to the bottom of the panel
+    chat_layout.addLayout(input_layout) 
     
-    input_layout.addWidget(input_field)
-    input_layout.addWidget(btn_mic)
-    
-    chat_layout.addLayout(input_layout) # Add the row to the chat panel
-    
+    # Finishing and adding to the main panel
     col_right.addWidget(panel_chat)
-    ui_components['chat'] = chat_box; ui_components['input'] = input_field
+    
+    # saving UI components for later use
+    ui_components['chat'] = chat_box
+    ui_components['input'] = input_field
+    ui_components['mic_btn'] = btn_mic
 
     # --- Add Columns to Main Layout ---
     main_layout.addLayout(col_left, 1)   # Left (25%)
