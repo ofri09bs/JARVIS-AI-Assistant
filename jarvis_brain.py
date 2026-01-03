@@ -191,7 +191,7 @@ def tool_open_app(app_name):
         pass  # Try AppOpener if direct start fails
 
     try:
-        open_app(app_name)
+        open_app(app_name, match_closest=True, throw_error=True)
         return f"Opened application: {app_name}"
     except Exception as e:
         return f"Error opening application: {str(e)}"
@@ -328,11 +328,10 @@ def quick_classify_intent(command):
     chat_score = sum(1 for kw in chat_keywords if kw in command)
     plan_score = sum(1 for kw in plan_keywords if kw in command)
 
-    certenty_threshold = 2
-    if plan_score - chat_score >= certenty_threshold:
+    if plan_score > chat_score:
         return "PLAN"
     
-    if chat_score - plan_score >= certenty_threshold:
+    elif chat_score > plan_score:
         return "CHAT"
     
     return classify_intent(command) # Fallback to full classification
@@ -359,7 +358,7 @@ def process_hardcoded_command(command):
     elif "open" in command:
         app_name = command.lower().split("open ", 1)[1].strip()
         try:
-            open_app(app_name, match_closest=True, throw_error=True) 
+            tool_open_app(app_name)
             add_logs(f"Action Taken: Opened {app_name}")
             return f"Opening {app_name}."
         except:
@@ -439,9 +438,12 @@ def clean_json_response(text):
 # Main processing function
 def process_user_input(user_input):
 
-    hardcoded_response = process_hardcoded_command(user_input)
-    if hardcoded_response is not None:
-        return hardcoded_response
+    hardcoded_commands = ["open website", "open", "lock computer", "fix this code", "work mode", "matrix protocol"]
+    count = sum(1 for cmd in hardcoded_commands if cmd in user_input.lower())
+    if count == 1: # Only process hardcoded if exactly one matches (more then 1 should go to planning)
+        hardcoded_response = process_hardcoded_command(user_input)
+        if hardcoded_response is not None:
+            return hardcoded_response
 
     intent = quick_classify_intent(user_input)
     if intent == "PLAN":
