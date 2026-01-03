@@ -23,6 +23,7 @@ Jarvis can execute almost **every complex task you will give him**, such as: `Ja
 * **Tactical Typing:** Solves the "focus stealing" issue by minimizing the UI, waiting for the active window, and using **Tactical Paste** (Clipboard Injection) instead of slow keystrokes.
 * **Smart App Launcher:** A 3-layer launch system: `Custom Aliases` -> `System Commands` -> `AppOpener` (Fuzzy Search). It knows that "VS Code" means `code` and "Chrome" means `chrome.exe`.
 * **Volume Control:** Native integration via `pycaw` for precise audio management.
+* **Screen Analysis:** Can Screenshot and analyze your screen with **Groq Meta-Llama 4 image recognition**
 
 ### 🛡️ Security Sandbox
 * **Command Filtering:** Access to the terminal (`cmd`) is protected by a **Blacklist** to prevent dangerous commands (like deletion or formatting).
