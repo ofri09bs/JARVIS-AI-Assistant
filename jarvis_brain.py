@@ -10,12 +10,17 @@ import time
 from pynput.keyboard import Controller, Key
 import pyautogui
 from PyQt6.QtWidgets import QApplication
+from groq import Groq          
+from PIL import Image
+import io
+import base64
 
 
 
 # --- Load Environment Variables ---
 load_dotenv()
 API_KEY = os.getenv("GOOGLE_AI_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 JARVIS_INTRUCTIONS = """
 You are An AI assistant that have 2 Modes, you will get in every message the mode you need to respond in.
 [CHAT MODE]: You are 'Jarvis' from Iron Man, a sophisticated personal AI assistant.
@@ -55,16 +60,22 @@ You have access to these exact tools:
 6. "keyboard_press": Simulate keyboard press. Use this function just for SHORTCUTS. not for typing text. (Args: "keys" (each *key* (not word) separated by +), e.g., "ctrl+shift+n"))
 7. "set_volume": Set system volume. (Args: "level" (0-100) , not percentage just integer)
 8. "type_text": Type text into the current focused application. (Args: "text")
+9. "remember": Store a fact in long-term memory. Use if you think it's important/useful. (Args: "data")
+10. "recall": Retrieve all stored facts from long-term memory. use if needed. (No Args)
+11. "analyze_screen": Analyze the current screen content and answer a question about it. You can ask it anything. (Args: "command")
 
 [QUESTION MODE]:
 You Need to answer the question as accurately as possible.
-Answer ONLY on what you got asked. DO NOT ADD ANY EXTRA INFORMATION.
-Just a SHORT and CONCISE answer. (Usally it will be one word)
+for intent classification questions, answer with only ONE word: PLAN or CHAT.
+for other questions, answer normally based on your knowledge and memory.
+you can explain, be witty, sarcastic, funny, etc.
 
 """
 
 genai.configure(api_key=API_KEY)
+groq_client = Groq(api_key=GROQ_API_KEY) 
 memory = None
+MEMORY_FILE = "jarvis_memory.json"
 
 
 # ***************** Tool Implementations ***************** #
@@ -248,6 +259,70 @@ def set_volume(level: int):
     except Exception as e:
         return f"Error setting volume: {str(e)}"
     
+
+def load_memory():
+    if not os.path.exists(MEMORY_FILE):
+        return {}
+    with open(MEMORY_FILE, 'r', encoding='utf-8') as f:
+        return json.load(f)
+    
+
+def tool_remember(data):
+    memory_data = load_memory()
+    if "facts" not in memory_data:
+        memory_data["facts"] = []
+
+    memory_data["facts"].append(data)
+    with open(MEMORY_FILE, 'w', encoding='utf-8') as f:
+        json.dump(memory_data, f)
+    
+    return f"Memory updated: {data}"
+
+def tool_recall():
+    memory_data = load_memory()
+    facts = memory_data.get("facts", [])
+    return "\n".join(facts) if facts else "Memory is empty."
+
+
+def encode_image_to_base64(image):
+    buffered = io.BytesIO()
+    image.save(buffered, format="JPEG", quality=85)
+    return base64.b64encode(buffered.getvalue()).decode('utf-8')
+
+def tool_analyze_screen(command):
+    try:
+        screenshot = pyautogui.screenshot()
+        screenshot.thumbnail((1280, 1280))
+        base64_image = encode_image_to_base64(screenshot)
+
+        chat_completion = groq_client.chat.completions.create(
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": command},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"data:image/jpeg;base64,{base64_image}",
+                            },
+                        },
+                    ],
+                }
+            ],
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            temperature=0.1,
+            max_tokens=512
+        )
+
+        response_text = chat_completion.choices[0].message.content
+        return f"Screen Analysis Result: {response_text}"
+    
+    except Exception as e:
+        print(f"[DEBUG] Error in tool_analyze_screen: {str(e)}")
+        return f"Error analyzing screen: {str(e)}"
+
+    
 # Actions Registry for Planner
 ACTIONS_REGISTRY = {
     "cmd": tool_cmd_run,
@@ -258,6 +333,9 @@ ACTIONS_REGISTRY = {
     "keyboard_press": tool_keyboard_press,
     "set_volume": tool_set_volume,
     "type_text": tool_type_text,
+    "remember": tool_remember,
+    "recall": tool_recall,
+    "analyze_screen": tool_analyze_screen
 }
 
 
@@ -310,13 +388,15 @@ def classify_intent(command):
 
 
 def quick_classify_intent(command):
+
     command = command.lower()
     plan_keywords = [
         "open", "close", "run", "create", "delete", "write", "read", 
         "set volume", "mute", "unmute", "type", "press", "click", 
         "download", "search", "hack", "matrix", "lock", "shut down",
         "work mode", "fix", "code", "website", "browser", "application",
-        "launch", "start", "stop", "install", "uninstall", "update"
+        "launch", "start", "stop", "install", "uninstall", "update","screen",
+        "analyze","screenshot","capture","help"
     ]
 
     chat_keywords = [
@@ -327,6 +407,9 @@ def quick_classify_intent(command):
 
     chat_score = sum(1 for kw in chat_keywords if kw in command)
     plan_score = sum(1 for kw in plan_keywords if kw in command)
+
+    if "screen" in command or "screenshot" in command or "analyze" in command:
+        plan_score += 2  # Boost for screen-related commands
 
     if plan_score > chat_score:
         return "PLAN"
@@ -411,6 +494,29 @@ def parse_and_execute_plan(plan_json):
         action_func = ACTIONS_REGISTRY.get(action_name)
         if action_func:
             print(f"[DEBUG] Executing Action: {action_name} with params {params}")
+
+            if action_func == tool_analyze_screen: # Special handling for analyze_screen
+                try:
+                    print(f"[DEBUG] Capturing screen for analyze_screen action.")
+                    vision_raw_response = action_func(**params)
+                    integration_prompt = f"""
+                    [QUESTION MODE]:
+                    CONTEXT: The user asked to analyze the screen regarding: "{params.get('command')}".
+                    VISUAL DATA FROM SYSTEM: "{vision_raw_response}"
+                    
+                    INSTRUCTION: Based ONLY on the visual data above, answer the user's request directly and in detail.
+                    """
+
+                    final_response = ask_jarvis(integration_prompt)
+                    print(f"[DEBUG] Final Jarvis Interpretation: {final_response}")
+                    results.append({"action": f"{action_name.replace("_", " ")}", "status": "success", "response": final_response})
+                    continue  
+
+                except Exception as e:
+                    results.append({"action": f"{action_name.replace("_", " ")}", "status": "failed"})
+                    print(f"[DEBUG] Action Failed: {str(e)}")
+                    continue
+
             try:
                 result = action_func(**params)
                 if result.startswith("Error"):
@@ -418,8 +524,10 @@ def parse_and_execute_plan(plan_json):
                     print(f"[DEBUG] Action Failed: {result}")
                 else:
                     results.append({"action": f"{action_name.replace("_", " ")}", "status": "success"})
+
             except Exception as e:
                 results.append({"action": f"{action_name.replace("_", " ")}", "status": "failed"})
+
         else:
             results.append({"action": f"{action_name.replace("_", " ")}", "status": "failed"})
 
@@ -472,8 +580,15 @@ def process_user_input(user_input):
             if status != 'success':
                 faild_actions.append(action + ", " + status)
 
+            if action == "analyze screen" and status == "success":
+                vision_response = res.get("response", "")
+                add_logs(f"Screen Analysis Result: {vision_response}")
+
         if faild_actions:
             return f"Plan executed with some issues. Failed actions: {', '.join(faild_actions)}"
+        
+        if vision_response:
+            return vision_response
         
         plan_json_goal = plan_json.get("goal", "the requested tasks")
         add_logs(f"Plan executed successfully: {plan_json_goal}")
@@ -498,4 +613,3 @@ if __name__ == "__main__":
             break
         response = process_user_input(user_input)
         print(f"Jarvis: {response}")
-
