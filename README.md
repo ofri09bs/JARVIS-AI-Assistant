@@ -110,5 +110,3 @@ Run the main application:
 
 ## ⚠️ Security Notice
 This AI has access to shell commands (subprocess). While a blacklist is implemented to prevent accidental damage (rm, format, etc.), always use caution when giving "Administrator" privileges to an AI agent.
-
-"Permission Denied" on MP3 files? The system automatically handles unique filenames (tts_{timestamp}.mp3) and cleans up old files to prevent locking issues.
