@@ -2,11 +2,15 @@
 
 **Just A Rather Very Intelligent System**
 
-An advanced, Iron Man-inspired desktop AI assistant built with Python.
-Unlike standard voice assistants, **features an Agentic Workflow**: it doesn't just chat; it intelligently classifies your intent, plans a series of actions in JSON, and executes them on your PC in real-time.
+An advanced, Iron Man-inspired desktop AI agent built with Python.
+
+**jarvis 3.0 is not just a chatbot.** It creates its own code in real-time. It features a sophisticated **Agentic Workflow** that classifies intent, plans **complex multi-step** tasks using JSON, and safely executes them on your PC.
+
+Jarvis can execute almost **every complex task you will give him**, such as: `Jarvis, I want to code. Open VS Code, create a new python file called 'test.py', and write a Hello World loop inside it. also set the volume to 30% and open youtube for me and search there "Avengers Doomsday leaks" please `. (Jarvis will open VS code , creat a new file , paste there the code , open youtube and searchs there , and also sets the computers volume to 30%. And all of this without ONE precodded command!)
+
 <img width="1913" height="976" alt="image" src="https://github.com/user-attachments/assets/6ddb14de-41ee-497c-b41f-6be9aafb6e20" />
 
-## 🚀 Features & Commands
+## 🚀 Key Features
 
 ### GUI Features
 - Shows the **current time**
@@ -15,44 +19,27 @@ Unlike standard voice assistants, **features an Agentic Workflow**: it doesn't j
 - Shows how much **space is free** on the disk (in GB)
 - Shows the current **Local weather** temperature
 
-### 🤖 Smart commands (you dont need to say this exact words, the AI will understand it)
-**For this commands , you can say a few together and they will all be executed**
+### 🖥️ Desktop Automation & Focus Management
+* **Tactical Typing:** Solves the "focus stealing" issue by minimizing the UI, waiting for the active window, and using **Tactical Paste** (Clipboard Injection) instead of slow keystrokes.
+* **Smart App Launcher:** A 3-layer launch system: `Custom Aliases` -> `System Commands` -> `AppOpener` (Fuzzy Search). It knows that "VS Code" means `code` and "Chrome" means `chrome.exe`.
+* **Volume Control:** Native integration via `pycaw` for precise audio management.
 
-**For example:** Jarvis, open the website youtube , set volume to 30% and also close steam
+### 🛡️ Security Sandbox
+* **Command Filtering:** Access to the terminal (`cmd`) is protected by a **Blacklist** to prevent dangerous commands (like deletion or formatting).
+* **Scoped Tools:** The AI can only access specific registered functions, preventing hallucinations from executing arbitrary code.
 
- - **Open App <app_name>** : Can open (almost) any App you tell it using `AppOpener`
- - **Close App <app_name>**: Terminates the .exe file of the application
- - **Open File <path>**: Opens the given file
- - **Set Volume <level>**: Sets the computers volume to be {level}%
- - **Lock System**: Locking the computer
- - **Open Website <url_name>**: Opens the given website , you dont need to say to full website , just the name (like open website google)
+### 🗣️ Natural Interaction
+* **Neural Voice:** Uses **Edge-TTS** for high-quality, low-latency British/American speech.
+* **Glass-morphism GUI:** A futuristic PyQt6 interface with real-time feedback and logs.
 
-### 🛠️ Hardcoded commands (Need to be in the exact order)
- - **Open Website <url>**: Opens the given url , adds http:// and .com if there isnt.
- - **Open <app_name>**:  Can open (almost) any App you tell it using `AppOpener`
- - **Lock computer**: Locking the computer
- - **Fix this code**: Extracting the clipboard content, telling the AI to fix it, then coping it back to the clipboard
- - **work mode**: Opens VSCode and Gemini
- - **Matrix Protocol**: Opens a CMD window in green and writing every file in root (seems like hacking)
 
 ## 🧠 Core Architecture (The Brain)
 
-This project uses a **Router-Planner-Executor** model powered by **Google Gemma**:
+Unlike standard assistants that use hardcoded `if/else` logic, JARVIS uses a dynamic **Router-Planner-Executor** model:
 
-1.  **Intent Classification:** The AI analyzes your voice command to decide if it's a **CHAT** (casual conversation) or a **PLAN** (task execution).
-2.  **JSON Planner:** If a task is detected, it generates a structured JSON plan breaking down the goal into steps (e.g., "Open Spotify", "Set Volume to 50%", "Lock Screen") in the next format:
-   ```
-{
-   "goal": string,
-   "steps": [
-     {
-       "action": string,
-        ....
-       "params": object
-     }
-    ]
- }
-```
+1.  **⚡ Fast Router:** A static analysis engine quickly handles common commands (0.1s latency) and only delegates complex reasoning to the LLM when necessary.
+2.  **📝 JSON Planner:** Powered by **Google Gemma**, it breaks down abstract goals (e.g., *"Set up a coding environment"*) into a list of atomic **Primitive Actions**.
+3.  **🛠️ Safe Executor:** A Python engine that parses the plan and executes tools from a strict Registry.
 4.  **Executor:** A Python engine parses the JSON and performs the actions using system libraries.
 
 ## Core Workflow:
@@ -60,7 +47,7 @@ This project uses a **Router-Planner-Executor** model powered by **Google Gemma*
 Getting **speech/text** input → Checking for **Hardcoded commands** → deciding if you want to **CHAT** or to **PLAN** a series of tasks 
 
  - If **CHAT**: Sends the input to Gemma
- - If **PLAN**: Creats a json formated list of tasks , parses them and executes them (if possible)
+ - If **PLAN**: Creats a json formated list of primitive actions , parses them and executes them (if possible)
 
 
 ## 🛠️ Tech Stack
@@ -119,11 +106,9 @@ Run the main application:
 
 **To Stop:** Click the Microphone Icon again.
 
-**Typing:** You can always type commands in the text box and press Enter. (More commands comming soon!)
+**Typing:** You can always type commands in the text box and press Enter.
 
-## 🔧 Troubleshooting
-Microphone not picking up audio? Open jarvis_voice.py and lower the SILENCE_THRESHOLD (e.g., from 3 to 1.5).
-
-Assistant won't stop listening? Increase the SILENCE_THRESHOLD (e.g., to 10 or 15) if you have background noise.
+## ⚠️ Security Notice
+This AI has access to shell commands (subprocess). While a blacklist is implemented to prevent accidental damage (rm, format, etc.), always use caution when giving "Administrator" privileges to an AI agent.
 
 "Permission Denied" on MP3 files? The system automatically handles unique filenames (tts_{timestamp}.mp3) and cleans up old files to prevent locking issues.
