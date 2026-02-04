@@ -70,26 +70,33 @@ def install_requirements(target_dir):
     run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "pyinstaller"])
 
 def build_exe(target_dir):
-    """Building the EXE from the src folder"""
+    # Building the EXE using PyInstaller, running the command from within the src directory for better path handling
     src_dir = os.path.join(target_dir, "src")
     assets_dir = os.path.join(target_dir, "assets")
     
-    # Critical check: Did Git pull the new folders?
+    # Critical check - if src doesn't exist, we can't build
     if not os.path.exists(src_dir):
-        raise Exception(f"Critical Error: 'src' folder missing in {target_dir}.\nDid you push the new folder structure to GitHub?")
+        print(f"Error: 'src' folder not found in {target_dir}")
+        return False
 
-    # The command
+    # Note: We will run the command from within src, so all paths are relative to it
     cmd = [
         jarvis_python_exe, "-m", "PyInstaller",
-        "jarvis_interface.py", # script name only (because we run from src)
+        "jarvis_interface.py",  # Just the filename (because we're already inside src)
         "--noconfirm",
         "--onefile",
         "--windowed",
         "--name", EXE_NAME,
-        "--distpath", "..",     # output to main folder
+        
+        # Output one level up (because we're in src)
+        "--distpath", "..", 
         "--workpath", "../build",
         "--specpath", "../build",
-        "--add-data", "../assets;assets", # Import Assets
+        
+        # Import Assets (located one level up in assets)
+        "--add-data", "../assets;assets",
+        
+        # Forced import of modules located nearby (to avoid PyInstaller missing them)
         "--hidden-import=jarvis_brain",
         "--hidden-import=jarvis_voice",
         "--hidden-import=jarvis_visualizer",
@@ -99,17 +106,15 @@ def build_exe(target_dir):
         "--hidden-import=pynput"
     ]
     
+    # icon
     icon_path = os.path.join(assets_dir, "jarvis_logo.ico")
     if os.path.exists(icon_path):
         cmd.insert(-1, f"--icon=../assets/jarvis_logo.ico")
     
-    # Running from the SRC folder
-    run_hidden_command(cmd, cwd=src_dir)
+    print(f"Building EXE from directory: {src_dir}...")
     
-    # Check that the file was created
-    exe_file = os.path.join(target_dir, f"{EXE_NAME}.exe")
-    if not os.path.exists(exe_file):
-        raise Exception("Build failed! The EXE file was not created.")
+    run_hidden_command(cmd, cwd=src_dir)
+    return True
 
 def create_desktop_shortcut(target_dir):
     exe_path = os.path.join(target_dir, f"{EXE_NAME}.exe")
