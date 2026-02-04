@@ -89,6 +89,7 @@ def build_exe(target_dir):
         "--name", EXE_NAME,
         
         # Output one level up (because we're in src)
+        "--paths", ".",
         "--distpath", "..", 
         "--workpath", "../build",
         "--specpath", "../build",

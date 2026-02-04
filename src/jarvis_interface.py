@@ -14,6 +14,11 @@ from PyQt6.QtCore import QTimer, Qt, QRectF, QSize
 from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap, QPalette, QBrush
 from PyQt6.QtWidgets import QPushButton
 
+if getattr(sys, 'frozen', False):
+    base_path = sys._MEIPASS
+    sys.path.append(base_path)
+    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 import jarvis_brain
 import jarvis_visualizer
 import jarvis_voice
