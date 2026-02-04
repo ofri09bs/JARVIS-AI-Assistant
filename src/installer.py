@@ -26,7 +26,7 @@ groq_api_var = tk.StringVar()
 jarvis_python_exe = ""
 
 def run_hidden_command(cmd, cwd=None, check=True):
-    # Run a command in a hidden window (Windows only)
+    # run command without showing a console window
     startupinfo = None
     creationflags = 0
     if os.name == 'nt':
@@ -42,29 +42,22 @@ def run_hidden_command(cmd, cwd=None, check=True):
     )
 
 def setup_isolated_python(progress_callback):
-    # Download and install isolated Python environment
+    # Downloads and installs Python 3.11 in an isolated environment
     global jarvis_python_exe
     
-    # 1. Define paths
     base_dir = os.path.join(os.getenv("USERPROFILE"), "JarvisPythonEnv")
     python_exe = os.path.join(base_dir, "python.exe")
     installer_path = os.path.join(os.getenv("TEMP"), "python_installer.exe")
 
-    # If Python already exists, use it
     if os.path.exists(python_exe):
-        print(f"Isolated Python found at: {python_exe}")
         jarvis_python_exe = python_exe
         return
 
-    # 2. Download Python
-    print("Downloading Python 3.11...")
     try:
         urllib.request.urlretrieve(PYTHON_INSTALLER_URL, installer_path)
     except Exception as e:
         raise Exception(f"Failed to download Python: {e}")
 
-    # 3. Silent installation
-    print("Installing Python environment...")
     cmd = [
         installer_path, "/quiet", "InstallAllUsers=0", 
         f"TargetDir={base_dir}", "PrependPath=0", 
@@ -72,7 +65,6 @@ def setup_isolated_python(progress_callback):
     ]
     run_hidden_command(cmd, check=True)
 
-    # 4. Cleanup
     if os.path.exists(installer_path):
         os.remove(installer_path)
 
@@ -80,8 +72,6 @@ def setup_isolated_python(progress_callback):
         raise Exception("Python installation failed.")
 
     jarvis_python_exe = python_exe
-    print("Python setup complete.")
-
 
 def clear_window():
     for widget in root.winfo_children():
@@ -142,28 +132,24 @@ def create_env_file():
         f.write(f"GROQ_API_KEY={groq_api_var.get()}\n")
 
 def install_requirements(target_dir):
-    """Install requirements using the isolated Python environment"""
     req_path = os.path.join(target_dir, "requirements.txt")
-    
     if os.path.exists(req_path):
         run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "-r", req_path])
-    
     run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "pyinstaller"])
 
 def build_exe(target_dir):
-    """Build the final EXE considering the new folders structure"""
-    # 1. Update paths for src and assets
+    # Paths
     script_path = os.path.join(target_dir, ENTRY_POINT_SCRIPT)
     assets_dir = os.path.join(target_dir, "assets")
+    src_dir = os.path.join(target_dir, "src") # הנתיב לתיקיית הקוד
     icon_path = os.path.join(assets_dir, "jarvis_logo.ico")
     
     if not os.path.exists(script_path):
         print(f"Error: Could not find {ENTRY_POINT_SCRIPT}")
         return False
 
-    # 2. PyInstaller command
     cmd = [
-        jarvis_python_exe, "-m", "PyInstaller", # Run via isolated Python
+        jarvis_python_exe, "-m", "PyInstaller",
         "--noconfirm",
         "--onefile",
         "--windowed",
@@ -172,42 +158,42 @@ def build_exe(target_dir):
         "--workpath", os.path.join(target_dir, "build"),
         "--specpath", os.path.join(target_dir, "build"),
         
-        # Include the entire assets folder inside the EXE
-        f"--add-data={assets_dir};assets", 
+        f"--paths={src_dir}", 
+        
+        # Include Assets
+        f"--add-data={assets_dir};assets",
         
         script_path
     ]
     
-    # Add icon if exists
     if os.path.exists(icon_path):
         cmd.insert(-1, f"--icon={icon_path}")
     
-    print(f"Building EXE with command: {cmd}")
     run_hidden_command(cmd, cwd=target_dir)
     return True
 
 def create_desktop_shortcut(target_dir):
     exe_path = os.path.join(target_dir, f"{EXE_NAME}.exe")
+    icon_path = os.path.join(target_dir, "assets", "jarvis_logo.ico") # Path to the icon for the shortcut
     desktop = os.path.join(os.getenv("USERPROFILE"), "Desktop")
     shortcut_path = os.path.join(desktop, f"{EXE_NAME}.lnk")
+    
     ps_script = f"""
     $s=(New-Object -COM WScript.Shell).CreateShortcut('{shortcut_path}');
     $s.TargetPath='{exe_path}';
     $s.WorkingDirectory='{target_dir}';
     $s.Description='Launch Jarvis Assistant';
+    $s.IconLocation='{icon_path}'; 
     $s.Save()
     """
     run_hidden_command(["powershell", "-Command", ps_script])
 
 def install_logic_thread(progress_callback, finished_callback):
     target_dir = install_directory.get()
-    
     try:
-        # Step 0: Setup Python Environment (NEW)
         progress_callback(5)
         setup_isolated_python(progress_callback)
         
-        # Step 1: Clone Repo
         progress_callback(15)
         if os.path.exists(os.path.join(target_dir, ".git")):
              run_hidden_command(["git", "pull"], cwd=target_dir, check=False)
@@ -216,23 +202,19 @@ def install_logic_thread(progress_callback, finished_callback):
             if not (os.path.exists(target_dir) and os.listdir(target_dir)):
                  run_hidden_command(["git", "clone", "--depth", "1", REPO_URL, target_dir])
         
-        # Step 2: Install Requirements
         progress_callback(40)
         install_requirements(target_dir)
         
-        # Step 3: Build EXE
         progress_callback(80)
         build_exe(target_dir)
         
-        # Step 4: Finalize
         progress_callback(95)
         create_env_file()
         create_desktop_shortcut(target_dir)
         progress_callback(100)
 
     except Exception as e:
-        print(f"Critical Error: {e}")
-        messagebox.showerror("Error", str(e))
+        messagebox.showerror("Installation Error", f"An error occurred:\n{str(e)}")
         
     time.sleep(1)
     finished_callback()
@@ -243,15 +225,15 @@ def step_four_installing():
     header.pack(pady=20)
     progress = ttk.Progressbar(root, orient=tk.HORIZONTAL, length=300, mode='determinate')
     progress.pack(pady=20)
-    status_label = tk.Label(root, text="Setting up Python environment...", font=("Arial", 10))
+    status_label = tk.Label(root, text="Starting...", font=("Arial", 10))
     status_label.pack()
 
     def update_progress(value):
         progress['value'] = value
         if value < 15: msg = "Setting up Python 3.11 Environment..."
-        elif value < 40: msg = "Downloading Jarvis Repository..."
+        elif value < 40: msg = "Downloading Repository..."
         elif value < 80: msg = "Installing Libraries..."
-        elif value < 95: msg = "Compiling Jarvis App (This takes time)..."
+        elif value < 95: msg = "Compiling Jarvis App..."
         else: msg = "Done!"
         status_label.config(text=msg)
 
@@ -264,7 +246,7 @@ def step_five_finish():
     clear_window()
     header = tk.Label(root, text="Installation Complete!", font=("Arial", 14, "bold"), fg="green")
     header.pack(pady=20)
-    desc = tk.Label(root, text=f"Jarvis has been installed to:\n{install_directory.get()}", padx=20)
+    desc = tk.Label(root, text=f"Installed to:\n{install_directory.get()}", padx=20)
     desc.pack(pady=10)
     btn_frame = tk.Frame(root)
     btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10, padx=20)
@@ -273,12 +255,8 @@ def step_five_finish():
 def main():
     root.title("Jarvis Assistant Installer")
     root.geometry("500x400")
-    root.resizable(False, False)
-    
-    # Check for installer icon (if exists in the directory where you run the installer)
     if os.path.exists("jarvis_logo.ico"):
         root.iconbitmap("jarvis_logo.ico")
-        
     step_one_welcome()
     root.mainloop()
 
