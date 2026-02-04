@@ -19,13 +19,25 @@ import jarvis_visualizer
 import jarvis_voice
 
 # --- GLOBAL CONFIGURATION ---
+
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        # PyInstaller creates a temp folder and stores path in _MEIPASS
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+
+    return os.path.join(base_path, relative_path)
+
+
 COLOR_BG_TRANSPARENT = QColor(5, 10, 14, 200)
 COLOR_PANEL_TRANSPARENT = QColor(13, 22, 29, 180)
 COLOR_ACCENT = "#00e5ff"
 COLOR_TEXT = "#ffffff"
 is_voice_mode_active = False
 
-BG_IMAGE_PATH = "ironman_bg.jpg" 
+BG_IMAGE_PATH = resource_path(os.path.join("assets", "ironman_bg.jpg")) 
 
 STYLESHEET = f"""
     QWidget {{
