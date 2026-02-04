@@ -99,68 +99,53 @@ def setup_portable_python(progress_callback):
     
     jarvis_python_exe = python_exe
 
-def install_requirements(target_dir):
-    # שדרוג pip ו-setuptools ליתר ביטחון
-    run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"])
-    
-    req_path = os.path.join(target_dir, "requirements.txt")
-    if os.path.exists(req_path):
-        run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "-r", req_path])
-    
-    run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "pyinstaller"])
-
 def build_exe(target_dir):
-    # המרת הנתיב לנתיב מוחלט כדי למנוע בלבול
+    # המרת נתיב למוחלט
     target_dir = os.path.abspath(target_dir)
     script_path = os.path.join(target_dir, "jarvis_interface.py")
     assets_dir = os.path.join(target_dir, "assets")
     
-    print(f"[INFO] Building EXE in: {target_dir}")
+    print(f"[INFO] Preparing to build in: {target_dir}")
 
-    # 1. Flattening logic - העברת קבצים מתיקיית src אם קיימת
+    # 1. Flattening logic
     src_dir = os.path.join(target_dir, "src")
     if os.path.exists(src_dir):
-        print("[INFO] Flattening src directory...")
         for f in os.listdir(src_dir):
             try: shutil.move(os.path.join(src_dir, f), os.path.join(target_dir, f))
             except: pass
         try: shutil.rmtree(src_dir)
         except: pass
 
-    # 2. ניקוי שאריות מבניות קודמות (חשוב מאוד!)
-    # זה מונע מ-PyInstaller להשתמש ב-Cache שגוי שבו הקובץ חסר
-    for junk in ["build", "dist", "__pycache__"]:
-        junk_path = os.path.join(target_dir, junk)
-        if os.path.exists(junk_path):
-            try: shutil.rmtree(junk_path)
-            except: pass
-    
-    spec_file = os.path.join(target_dir, f"{EXE_NAME}.spec")
-    if os.path.exists(spec_file):
-        try: os.remove(spec_file)
-        except: pass
+    # 2. ניקוי שאריות
+    for junk in ["build", "dist", "__pycache__", f"{EXE_NAME}.spec"]:
+        path = os.path.join(target_dir, junk)
+        if os.path.exists(path):
+            if os.path.isdir(path): shutil.rmtree(path)
+            else: os.remove(path)
 
-    # 3. בדיקה שהקבצים קיימים פיזית לפני הבנייה
-    if not os.path.exists(os.path.join(target_dir, "jarvis_brain.py")):
-        print("[ERROR] jarvis_brain.py is MISSING from the directory!")
-        return False
+    # 3. בדיקת קבצים קריטית
+    required = ["jarvis_brain.py", "jarvis_interface.py"]
+    for f in required:
+        if not os.path.exists(os.path.join(target_dir, f)):
+            print(f"[ERROR] Missing file: {f}")
+            return False
 
-    if not os.path.exists(script_path):
-        print(f"[ERROR] jarvis_interface.py not found at {script_path}")
-        return False
+    # 4. הגדרת משתני סביבה (התיקון המרכזי!)
+    # אנו אומרים לפייתון: "חפש ספריות גם בתיקייה הנוכחית"
+    env = os.environ.copy()
+    current_path = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = f"{target_dir};{current_path}"
 
-    # 4. פקודת הבנייה המשופרת
     cmd = [
         jarvis_python_exe, "-m", "PyInstaller",
         "jarvis_interface.py", 
         "--noconfirm",
-        "--clean",  # ניקוי מטמון של PyInstaller
+        "--clean",
         "--onefile",
         "--windowed",
         "--name", EXE_NAME,
-        f"--paths={target_dir}", # שימוש בנתיב המוחלט
+        f"--paths={target_dir}",
         "--add-data", "assets;assets",
-        # הוספת המודולים בצורה מפורשת
         "--hidden-import=jarvis_brain",
         "--hidden-import=jarvis_voice",
         "--hidden-import=jarvis_visualizer",
@@ -168,28 +153,40 @@ def build_exe(target_dir):
         "--hidden-import=google.generativeai",
         "--hidden-import=PIL",
         "--hidden-import=pynput",
-        "--hidden-import=pyautogui" # הוספתי גם את זה ליתר ביטחון
+        "--collect-all=jarvis_brain" # מכריח איסוף מלא של המודול
     ]
     
     icon_path = os.path.join(assets_dir, "jarvis_logo.ico")
     if os.path.exists(icon_path):
         cmd.insert(-1, f"--icon={icon_path}")
     
-    print("[INFO] Running PyInstaller...")
-    result = run_hidden_command(cmd, cwd=target_dir)
+    print("[INFO] Running PyInstaller with PYTHONPATH injection...")
     
-    # בדיקת תוצאת הבנייה
+    # שינוי: שימוש ב-subprocess.run ישירות כדי להעביר את ה-env
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = subprocess.SW_HIDE
+    
+    result = subprocess.run(
+        cmd, 
+        cwd=target_dir, 
+        env=env,  # <--- הזרקת ה-PYTHONPATH כאן
+        capture_output=True, 
+        text=True,
+        startupinfo=startupinfo
+    )
+    
     if result.returncode != 0:
-        print(f"[ERROR] PyInstaller failed.\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}")
+        print(f"[ERROR] Build Failed!\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}")
         return False
         
-    print("[INFO] Build successful.")
     return True
 
 def create_desktop_shortcut(target_dir):
     exe_path = os.path.join(target_dir, f"{EXE_NAME}.exe")
     desktop = os.path.join(os.getenv("USERPROFILE"), "Desktop")
     shortcut_path = os.path.join(desktop, f"{EXE_NAME}.lnk")
+    icon_path = os.path.join(target_dir, "assets", "jarvis_logo.ico")
     
     vbs_script = f"""
     Set oWS = WScript.CreateObject("WScript.Shell")
@@ -198,7 +195,7 @@ def create_desktop_shortcut(target_dir):
     oLink.TargetPath = "{exe_path}"
     oLink.WorkingDirectory = "{target_dir}"
     oLink.Description = "Launch Jarvis Assistant"
-    oLink.IconLocation = "{exe_path}, 0"
+    oLink.IconLocation = "{icon_path}, 0"
     oLink.Save
     """
     vbs_file = os.path.join(target_dir, "shortcut.vbs")
