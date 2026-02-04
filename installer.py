@@ -65,23 +65,18 @@ def setup_portable_python(progress_callback):
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(base_dir)
             
-        # --- השינוי הקריטי כאן ---
         pth_file = os.path.join(base_dir, "python311._pth")
         if os.path.exists(pth_file):
             with open(pth_file, 'r') as f:
                 content = f.read()
             
-            # 1. הפעלת PIP
             content = content.replace("#import site", "import site")
-            
-            # 2. הוספת הנתיב הנוכחי (.) לרשימת החיפוש!
-            # בלי זה, פייתון נייד מתעלם מקבצים באותה תיקייה
+        
             if ".\n" not in content:
                 content += "\n."
                 
             with open(pth_file, 'w') as f:
                 f.write(content)
-        # -------------------------
 
         get_pip_path = os.path.join(base_dir, "get-pip.py")
         download_file(GET_PIP_URL, get_pip_path)
@@ -120,6 +115,9 @@ def build_exe(target_dir):
         "--workpath", os.path.join(target_dir, "build"), # Keep build files inside temp
         "--specpath", os.path.join(target_dir, "build"),
         "--add-data", os.path.join(target_dir, "assets", "ironman_bg.jpg") + ";.",  # Include background image 
+        "--collect-all=tkinter",     
+        "--collect-all=jarvis_brain", 
+        "--collect-all=pyautogui",    
         script_path
     ]   
 
@@ -128,7 +126,7 @@ def build_exe(target_dir):
     if os.path.exists(icon_path):
         cmd.insert(-1, f"--icon={icon_path}")
 
-    subprocess.run(cmd, cwd=target_dir, check=True)
+    run_hidden_command(cmd, cwd=target_dir, check=True)
     return True
     
 
