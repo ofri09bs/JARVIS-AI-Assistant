@@ -138,16 +138,18 @@ def install_requirements(target_dir):
     run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "pyinstaller"])
 
 def build_exe(target_dir):
-    # Paths
-    script_path = os.path.join(target_dir, ENTRY_POINT_SCRIPT)
+    """Builds the final EXE considering new folders and forced module imports"""
+    # 1. Update paths
+    script_path = os.path.join(target_dir, ENTRY_POINT_SCRIPT) # points to src/jarvis_interface.py
     assets_dir = os.path.join(target_dir, "assets")
-    src_dir = os.path.join(target_dir, "src") # הנתיב לתיקיית הקוד
+    src_dir = os.path.join(target_dir, "src") 
     icon_path = os.path.join(assets_dir, "jarvis_logo.ico")
     
     if not os.path.exists(script_path):
         print(f"Error: Could not find {ENTRY_POINT_SCRIPT}")
         return False
 
+    # 2. PyInstaller command
     cmd = [
         jarvis_python_exe, "-m", "PyInstaller",
         "--noconfirm",
@@ -158,19 +160,27 @@ def build_exe(target_dir):
         "--workpath", os.path.join(target_dir, "build"),
         "--specpath", os.path.join(target_dir, "build"),
         
-        f"--paths={src_dir}", 
+        # Adds the src folder to the search paths
+        f"--paths={src_dir}",
         
-        # Include Assets
+        "--hidden-import=jarvis_brain",
+        "--hidden-import=jarvis_voice",
+        "--hidden-import=jarvis_visualizer",
+
+        # include Assets
         f"--add-data={assets_dir};assets",
         
         script_path
     ]
     
+
     if os.path.exists(icon_path):
         cmd.insert(-1, f"--icon={icon_path}")
     
+    print(f"Building EXE with command: {cmd}")
     run_hidden_command(cmd, cwd=target_dir)
     return True
+
 
 def create_desktop_shortcut(target_dir):
     exe_path = os.path.join(target_dir, f"{EXE_NAME}.exe")
