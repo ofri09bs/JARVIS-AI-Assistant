@@ -14,11 +14,6 @@ from PyQt6.QtCore import QTimer, Qt, QRectF, QSize
 from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap, QPalette, QBrush
 from PyQt6.QtWidgets import QPushButton
 
-if getattr(sys, 'frozen', False):
-    base_path = sys._MEIPASS
-    sys.path.append(base_path)
-    sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
 import jarvis_brain
 import jarvis_visualizer
 import jarvis_voice
@@ -28,7 +23,6 @@ import jarvis_voice
 def resource_path(relative_path):
     """ Get absolute path to resource, works for dev and for PyInstaller """
     try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(".")

@@ -54,97 +54,54 @@ def install_requirements(target_dir):
         run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "-r", req_path])
     run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "pyinstaller"])
 
-def create_spec_file(target_dir):
-
-    spec_content = f"""
-# -*- mode: python ; coding: utf-8 -*-
-import os
-
-block_cipher = None
-
-src_path = os.path.join(os.getcwd(), 'src')
-assets_path = os.path.join(os.getcwd(), 'assets')
-
-a = Analysis(
-    [os.path.join('src', 'jarvis_interface.py')],
-    pathex=[src_path], 
-    binaries=[],
-    datas=[('assets', 'assets')],
-    hiddenimports=['jarvis_brain', 'jarvis_voice', 'jarvis_visualizer', 'groq', 'google.generativeai', 'PIL', 'pynput'],
-    hookspath=[],
-    hooksconfig={{}},
-    runtime_hooks=[],
-    excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
-    noarchive=False,
-)
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
-
-exe = EXE(
-    pyz,
-    a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
-    [],
-    name='{EXE_NAME}',
-    debug=False,
-    bootloader_ignore_signals=False,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False, # Windowed mode (בלי חלון שחור)
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
-    icon=os.path.join('assets', 'jarvis_logo.ico')
-)
-"""
-    spec_path = os.path.join(target_dir, "jarvis.spec")
-    with open(spec_path, "w", encoding="utf-8") as f:
-        f.write(spec_content)
-    return spec_path
-
 def build_exe(target_dir):
-    # 1. creating the Spec file
-    print("[DEBUG] Generating Spec file...")
-    spec_path = create_spec_file(target_dir)
+
+    script_path = os.path.join(target_dir, "jarvis_interface.py")
+    assets_dir = os.path.join(target_dir, "assets")
     
-    # 2. running PyInstaller with the Spec file
-    print("[DEBUG] Running PyInstaller on Spec file...")
+    if not os.path.exists(script_path):
+        print(f"[ERROR] jarvis_interface.py not found at {script_path}")
+        return False
+
+    # building the PyInstaller command with necessary options
+    cmd = [
+        jarvis_python_exe, "-m", "PyInstaller",
+        "jarvis_interface.py", 
+        "--noconfirm",
+        "--onefile",
+        "--windowed",
+        "--name", EXE_NAME,
+        
+        # packaging the assets folder (source;destination)
+        "--add-data", "assets;assets",
+        
+        # hidden imports for safety
+        "--hidden-import=jarvis_brain",
+        "--hidden-import=jarvis_voice",
+        "--hidden-import=jarvis_visualizer",
+        "--hidden-import=groq",
+        "--hidden-import=google.generativeai",
+        "--hidden-import=PIL",
+        "--hidden-import=pynput"
+    ]
     
-    cmd = [jarvis_python_exe, "-m", "PyInstaller", "--noconfirm", "jarvis.spec"]
+    # adding icon to the EXE itself
+    icon_path = os.path.join(assets_dir, "jarvis_logo.ico")
+    if os.path.exists(icon_path):
+        cmd.insert(-1, f"--icon=assets/jarvis_logo.ico")
     
+    print(f"Building EXE in {target_dir}...")
     run_hidden_command(cmd, cwd=target_dir)
-    
-    # 3. copying the EXE out of the dist folder
-    dist_exe = os.path.join(target_dir, "dist", f"{EXE_NAME}.exe")
-    final_exe = os.path.join(target_dir, f"{EXE_NAME}.exe")
-    
-    if os.path.exists(dist_exe):
-        if os.path.exists(final_exe): os.remove(final_exe)
-        shutil.move(dist_exe, final_exe)
-        shutil.rmtree(os.path.join(target_dir, "dist"), ignore_errors=True)
-        shutil.rmtree(os.path.join(target_dir, "build"), ignore_errors=True)
-        return True
-    else:
-        raise Exception("Build failed: EXE not found in dist folder.")
+    return True
 
 def create_desktop_shortcut(target_dir):
+    # creating a shortcut with a forced icon (VBScript)
     exe_path = os.path.join(target_dir, f"{EXE_NAME}.exe")
-    
-    if not os.path.exists(exe_path):
-        print(f"[ERROR] Cannot create shortcut. EXE not found at: {exe_path}")
-        return
-
     desktop = os.path.join(os.getenv("USERPROFILE"), "Desktop")
     shortcut_path = os.path.join(desktop, f"{EXE_NAME}.lnk")
+    icon_path = os.path.join(target_dir, "assets", "jarvis_logo.ico")
     
+    # using the EXE itself as the icon source (index 0)
     vbs_script = f"""
     Set oWS = WScript.CreateObject("WScript.Shell")
     sLinkFile = "{shortcut_path}"
@@ -152,18 +109,16 @@ def create_desktop_shortcut(target_dir):
     oLink.TargetPath = "{exe_path}"
     oLink.WorkingDirectory = "{target_dir}"
     oLink.Description = "Launch Jarvis Assistant"
-    oLink.IconLocation = "{exe_path}, 0"
+    oLink.IconLocation = "{icon_path}, 0"
     oLink.Save
     """
     
-    vbs_file = os.path.join(target_dir, "create_shortcut.vbs")
+    vbs_file = os.path.join(target_dir, "shortcut.vbs")
     with open(vbs_file, "w") as f:
         f.write(vbs_script)
     
     run_hidden_command(["cscript", "//Nologo", vbs_file])
-    
-    if os.path.exists(vbs_file):
-        os.remove(vbs_file)
+    if os.path.exists(vbs_file): os.remove(vbs_file)
 
 def create_env_file():
     target_dir = install_directory.get()
@@ -180,6 +135,7 @@ def install_logic_thread(progress_callback, finished_callback):
         setup_isolated_python(progress_callback)
         
         progress_callback(15)
+        # Clone to the main folder to ensure the EXE is created in the correct location with the right structure
         if os.path.exists(os.path.join(target_dir, ".git")):
              run_hidden_command(["git", "pull"], cwd=target_dir)
         else:
@@ -190,7 +146,7 @@ def install_logic_thread(progress_callback, finished_callback):
         install_requirements(target_dir)
         
         progress_callback(70)
-        build_exe(target_dir) 
+        build_exe(target_dir)
         
         progress_callback(90)
         create_env_file()
@@ -203,7 +159,7 @@ def install_logic_thread(progress_callback, finished_callback):
     time.sleep(1)
     finished_callback()
 
-# --- GUI ---
+# --- GUI (Original Text) ---
 def clear_window():
     for widget in root.winfo_children(): widget.destroy()
 
@@ -223,16 +179,10 @@ def step_two_directory():
     clear_window()
     header = tk.Label(root, text="Select Installation Folder", font=("Arial", 14))
     header.pack(pady=20)
-    
     input_frame = tk.Frame(root)
     input_frame.pack(pady=10, padx=20, fill=tk.X)
     ttk.Entry(input_frame, textvariable=install_directory).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
-    
-    def browse_folder():
-        folder = filedialog.askdirectory()
-        if folder: install_directory.set(folder)
-        
-    ttk.Button(input_frame, text="Browse...", command=browse_folder).pack(side=tk.RIGHT)
+    ttk.Button(input_frame, text="Browse...", command=lambda: install_directory.set(filedialog.askdirectory() or install_directory.get())).pack(side=tk.RIGHT)
     
     btn_frame = tk.Frame(root)
     btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10, padx=20)
@@ -243,16 +193,13 @@ def step_three_setup_environment():
     clear_window()
     header = ttk.Label(root, text="Setting Up Environment", font=("Segoe UI", 16, "bold"))
     header.pack(pady=(30, 20))
-    
     content_frame = ttk.Frame(root, padding=20)
     content_frame.pack(fill=tk.BOTH, expand=True)
     form_frame = ttk.Frame(content_frame)
     form_frame.pack(fill=tk.X, padx=20)
     form_frame.columnconfigure(1, weight=1)
-    
     ttk.Label(form_frame, text="Google AI API Key:").grid(row=0, column=0, sticky="w", pady=10)
     ttk.Entry(form_frame, textvariable=google_api_var, width=40).grid(row=0, column=1, sticky="ew", padx=(10, 0), pady=10)
-    
     ttk.Label(form_frame, text="Groq API Key:").grid(row=1, column=0, sticky="w", pady=10)
     ttk.Entry(form_frame, textvariable=groq_api_var, width=40).grid(row=1, column=1, sticky="ew", padx=(10, 0), pady=10)
     
@@ -283,7 +230,6 @@ def step_five_finish():
     header.pack(pady=20)
     desc = tk.Label(root, text=f"The application has been installed to:\n{install_directory.get()}", padx=20)
     desc.pack(pady=10)
-    
     btn_frame = tk.Frame(root)
     btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10, padx=20)
     ttk.Button(btn_frame, text="Finish", command=root.quit).pack(side=tk.RIGHT)
