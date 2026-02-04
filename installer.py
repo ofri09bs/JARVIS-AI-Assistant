@@ -104,7 +104,6 @@ def build_exe(target_dir):
         print(f"Error: Could not find {ENTRY_POINT_SCRIPT} in {target_dir}")
         return False
 
-    # Command to build: onefile, windowed (no console), distpath = installation folder
     cmd = [
         "pyinstaller",
         "--noconfirm",
@@ -115,7 +114,10 @@ def build_exe(target_dir):
         "--workpath", os.path.join(target_dir, "build"), # Keep build files inside temp
         "--specpath", os.path.join(target_dir, "build"),
         "--add-data", os.path.join(target_dir, "assets", "ironman_bg.jpg") + ";.",  # Include background image 
-        "--collect-all=tkinter",     
+        "--exclude-module=tkinter",
+        "--exclude-module=_tkinter",
+        "--exclude-module=tcl",
+        "--exclude-module=tk",    
         "--collect-all=jarvis_brain", 
         "--collect-all=pyautogui",    
         script_path
