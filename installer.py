@@ -42,20 +42,14 @@ def download_file(url, dest):
         subprocess.run(["curl", "-L", "-o", dest, url], check=True, capture_output=True)
 
 def setup_portable_python(progress_callback):
-    """
-    Sets up a Portable (Embedded) Python environment.
-    Does NOT require Admin rights or installation!
-    """
     global jarvis_python_exe
     base_dir = os.path.join(os.getenv("USERPROFILE"), "JarvisPythonEnv")
     python_exe = os.path.join(base_dir, "python.exe")
     
-    # אם כבר קיים, נדלג
     if os.path.exists(python_exe):
         jarvis_python_exe = python_exe
         return
 
-    # ניקוי התקנה ישנה
     if os.path.exists(base_dir):
         try: shutil.rmtree(base_dir)
         except: pass
@@ -64,25 +58,30 @@ def setup_portable_python(progress_callback):
     zip_path = os.path.join(os.getenv("TEMP"), "python_embed.zip")
     
     try:
-        # 1. הורדת ה-ZIP
         download_file(PYTHON_ZIP_URL, zip_path)
         
-        # 2. חילוץ ה-ZIP
         print("[INFO] Extracting Python...")
         with zipfile.ZipFile(zip_path, 'r') as zip_ref:
             zip_ref.extractall(base_dir)
             
-        # 3. תיקון קובץ ._pth כדי לאפשר התקנת ספריות (קריטי!)
+        # --- השינוי הקריטי כאן ---
         pth_file = os.path.join(base_dir, "python311._pth")
         if os.path.exists(pth_file):
             with open(pth_file, 'r') as f:
                 content = f.read()
-            # ביטול ההערה על 'import site'
+            
+            # 1. הפעלת PIP
             content = content.replace("#import site", "import site")
+            
+            # 2. הוספת הנתיב הנוכחי (.) לרשימת החיפוש!
+            # בלי זה, פייתון נייד מתעלם מקבצים באותה תיקייה
+            if ".\n" not in content:
+                content += "\n."
+                
             with open(pth_file, 'w') as f:
                 f.write(content)
-        
-        # 4. התקנת PIP (לא מגיע עם הגרסה הניידת)
+        # -------------------------
+
         get_pip_path = os.path.join(base_dir, "get-pip.py")
         download_file(GET_PIP_URL, get_pip_path)
         
@@ -100,14 +99,12 @@ def setup_portable_python(progress_callback):
     jarvis_python_exe = python_exe
 
 def build_exe(target_dir):
-    # המרת נתיב למוחלט
     target_dir = os.path.abspath(target_dir)
     script_path = os.path.join(target_dir, "jarvis_interface.py")
-    assets_dir = os.path.join(target_dir, "assets")
     
-    print(f"[INFO] Preparing to build in: {target_dir}")
+    print(f"[INFO] Building inside: {target_dir}")
 
-    # 1. Flattening logic
+    # Flattening logic
     src_dir = os.path.join(target_dir, "src")
     if os.path.exists(src_dir):
         for f in os.listdir(src_dir):
@@ -116,68 +113,57 @@ def build_exe(target_dir):
         try: shutil.rmtree(src_dir)
         except: pass
 
-    # 2. ניקוי שאריות
-    for junk in ["build", "dist", "__pycache__", f"{EXE_NAME}.spec"]:
-        path = os.path.join(target_dir, junk)
-        if os.path.exists(path):
-            if os.path.isdir(path): shutil.rmtree(path)
-            else: os.remove(path)
+    # וידוא שקובץ המוח נמצא
+    if not os.path.exists(os.path.join(target_dir, "jarvis_brain.py")):
+        print("[ERROR] jarvis_brain.py missing!")
+        return False
 
-    # 3. בדיקת קבצים קריטית
-    required = ["jarvis_brain.py", "jarvis_interface.py"]
-    for f in required:
-        if not os.path.exists(os.path.join(target_dir, f)):
-            print(f"[ERROR] Missing file: {f}")
-            return False
-
-    # 4. הגדרת משתני סביבה (התיקון המרכזי!)
-    # אנו אומרים לפייתון: "חפש ספריות גם בתיקייה הנוכחית"
-    env = os.environ.copy()
-    current_path = env.get("PYTHONPATH", "")
-    env["PYTHONPATH"] = f"{target_dir};{current_path}"
-
+    # פקודת PyInstaller סופר-מפורשת
     cmd = [
         jarvis_python_exe, "-m", "PyInstaller",
         "jarvis_interface.py", 
         "--noconfirm",
-        "--clean",
+        "--clean",           # ניקוי Cache
         "--onefile",
         "--windowed",
         "--name", EXE_NAME,
-        f"--paths={target_dir}",
+        f"--paths={target_dir}", # נתיב חיפוש מפורש
         "--add-data", "assets;assets",
+        # איסוף אגרסיבי של המודולים
         "--hidden-import=jarvis_brain",
+        "--collect-all=jarvis_brain", 
         "--hidden-import=jarvis_voice",
         "--hidden-import=jarvis_visualizer",
         "--hidden-import=groq",
         "--hidden-import=google.generativeai",
         "--hidden-import=PIL",
-        "--hidden-import=pynput",
-        "--collect-all=jarvis_brain" # מכריח איסוף מלא של המודול
+        "--hidden-import=pynput"
     ]
     
-    icon_path = os.path.join(assets_dir, "jarvis_logo.ico")
+    icon_path = os.path.join(target_dir, "assets", "jarvis_logo.ico")
     if os.path.exists(icon_path):
         cmd.insert(-1, f"--icon={icon_path}")
     
-    print("[INFO] Running PyInstaller with PYTHONPATH injection...")
+    # הרצת הפקודה עם סביבת עבודה מעודכנת
+    env = os.environ.copy()
+    env["PYTHONPATH"] = target_dir + ";" + env.get("PYTHONPATH", "")
     
-    # שינוי: שימוש ב-subprocess.run ישירות כדי להעביר את ה-env
     startupinfo = subprocess.STARTUPINFO()
     startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     startupinfo.wShowWindow = subprocess.SW_HIDE
-    
+
+    print("[INFO] Starting compilation...")
     result = subprocess.run(
         cmd, 
         cwd=target_dir, 
-        env=env,  # <--- הזרקת ה-PYTHONPATH כאן
+        env=env, 
         capture_output=True, 
         text=True,
         startupinfo=startupinfo
     )
     
     if result.returncode != 0:
-        print(f"[ERROR] Build Failed!\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}")
+        print(f"[ERROR] Build Failed:\n{result.stderr}")
         return False
         
     return True
@@ -212,6 +198,13 @@ def create_env_file():
     with open(os.path.join(userdata_dir, ".env"), 'w') as f:
         f.write(f"GOOGLE_AI_API_KEY={google_api_var.get()}\n")
         f.write(f"GROQ_API_KEY={groq_api_var.get()}\n")
+
+def install_requirements(target_dir):
+    req_file = os.path.join(target_dir, "requirements.txt")
+    if not os.path.exists(req_file):
+        raise Exception("requirements.txt not found in the repository.")
+    print("[INFO] Installing required libraries...")
+    run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "-r", req_file])
 
 def install_logic_thread(progress_callback, finished_callback):
     target_dir = install_directory.get()
