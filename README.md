@@ -64,41 +64,54 @@ Getting **speech/text** input → Checking for **Hardcoded commands** → decidi
 ```text
 📁 JARVIS-SYSTEM
 │
-├── jarvis_interface.py                 # Entry point. Handles GUI, Threading, and logic integration.
+├── jarvis_interface.py     # Entry point. Handles GUI, Threading, and logic integration.
 ├── jarvis_brain.py         # AI Logic. Handles API connection and command routing.
 ├── jarvis_voice.py         # Hearing & Speaking. VAD logic, TTS generation, and cleanup.
 ├── jarvis_visualizer.py    # FFT Logic. Custom QWidget for the audio spectrum.
+├── installer.py            # The Automated Setup Wizard.
 │
-├── ironman_bg.jpg          # Background image (Required)
-├── .env                    # API Keys (Recommended)
+├── assets/                 # Folder containing icons and background images
+│   ├── ironman_bg.jpg      
+│   └── jarvis_logo.ico
+│
 └── README.md               # Documentation
 ```
 
 ## 📦 Installation
-**1. Clone the Repository**
+You **do not** need to install Python or libraries manually. The installer handles everything. (I worked very hard for you :)
 
-```
-git clone [https://github.com/ofri09bs/JARVIS-AI-Assistent.git](https://github.com/ofri09bs/JARVIS-AI-Assistent.git)
-cd JARVIS-AI-Assistent
-```
+**1. Get the API Keys**
 
-**2. Install Dependencies**
+You need a free **Google Gemini** API Key and a **Groq** API KEY
 
-This project avoids pyaudio due to compatibility issues on newer Python versions. It uses sounddevice instead.
-```
-pip install -r requirements.txt
-```
+[Get Google AI Key Here](aistudio.google.com)
+[Get Groq AI Key Here](console.groq.com/keys)
 
-**3. Setup API Key**
+**2. Run the installer**
 
-You need a free Google Gemini API Key.
-Get your key from Google AI Studio.
-make an .env file and write there:
-```API_KEY = "YOUR_PASTED_API_KEY_HERE"```
+Download the exe file `JarvisInstaller.exe` and run it 
+The installation could take from **5 to 10 minutes** 
 
-**4. Background Image**
 
-Place an image named ironman_bg.jpg in the project root folder for the UI to load correctly.
+
+**3. Follow the wizard**
+
+1. The installer will ask for an Installation Folder.
+
+2. It will ask you to paste your API Keys.
+
+3. Click Install.
+
+The installer will automatically:
+
+✅ Download a dedicated Python environment (isolated from your system).
+
+✅ Clone the latest code from GitHub.
+
+✅ Install all required dependencies (sounddevice, numpy, etc.).
+
+✅ Create a Desktop Shortcut.
+
 
 ## ▶️ Usage
 Run the main application:
@@ -108,6 +121,7 @@ Run the main application:
 **To Stop:** Click the Microphone Icon again.
 
 **Typing:** You can always type commands in the text box and press Enter.
+
 
 ## ⚠️ Security Notice
 This AI has access to shell commands (subprocess). While a blacklist is implemented to prevent accidental damage (rm, format, etc.), always use caution when giving "Administrator" privileges to an AI agent.

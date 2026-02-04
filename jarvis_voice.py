@@ -11,7 +11,7 @@ import glob # Library for finding files
 
 # Hide startup messages
 os.environ['PYGAME_HIDE_SUPPORT_PROMPT'] = "hide"
-
+    
 # --- CONFIGURATION ---
 VOICE = "en-US-ChristopherNeural" 
 RATE = "+25%" 

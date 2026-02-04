@@ -14,9 +14,9 @@ from PyQt6.QtWidgets import QApplication
 from groq import Groq          
 from PIL import Image
 import io
-import base64
+import base64 
 
-
+  
 
 # --- Load Environment Variables ---
 if getattr(sys, 'frozen', False):

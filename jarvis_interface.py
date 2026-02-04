@@ -17,7 +17,7 @@ from PyQt6.QtWidgets import QPushButton
 import jarvis_brain
 import jarvis_visualizer
 import jarvis_voice
-
+    
 # --- GLOBAL CONFIGURATION ---
 
 def resource_path(relative_path):

@@ -10,7 +10,7 @@ class AudioVisualizer(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumHeight(100)
-        
+            
         # --- Configuration ---
         self.BAR_COUNT = 40       # Total bars (Keep it even for symmetry)
         self.BAR_WIDTH = 6        
