@@ -5,7 +5,8 @@ import threading
 import queue
 import os
 import requests
-
+import logging
+import traceback
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QProgressBar, QTextEdit, QLineEdit, QFrame,
                              QSizePolicy, QMessageBox)
@@ -96,6 +97,54 @@ rotation_angle = 0
 msg_queue = queue.Queue()
 bg_pixmap = None
 
+# --- Error Handling Configuration ---
+
+def setup_error_logging():
+    """
+    Configures the logging system to save errors to a file.
+    """
+    logging.basicConfig(
+        filename='jarvis_errors.log',
+        level=logging.ERROR,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        datefmt='%Y-%m-%d %H:%M:%S'
+    )
+
+def global_exception_handler(exc_type, exc_value, exc_traceback):
+    """
+    Catches ALL unhandled errors to prevent crashes and log them.
+    """
+    # 1. Ignore keyboard interrupt (Ctrl+C) so we can still stop script manually
+    if issubclass(exc_type, KeyboardInterrupt):
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        return
+
+    # 2. Get the full error message
+    error_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
+    
+    # 3. Log it to the file (The "Black Box")
+    logging.error("Uncaught exception:\n" + error_msg)
+    
+    # 4. Show a popup to the user (GUI)
+    # We use Try-Except here too, in case the GUI itself is broken
+    try:
+        app = QApplication.instance()
+        if app:
+            error_box = QMessageBox()
+            error_box.setIcon(QMessageBox.Icon.Critical)
+            error_box.setWindowTitle("Jarvis Critical Error")
+            error_box.setText("An unexpected error occurred.")
+            error_box.setInformativeText("The error has been logged to jarvis_errors.log")
+            error_box.setDetailedText(error_msg) # Show full details if they click "Show Details"
+            error_box.exec()
+    except:
+        # If GUI fails, just print to stderr
+        print("Critical Error (GUI failed):", error_msg)
+
+# --- Connect the hook ---
+sys.excepthook = global_exception_handler
+setup_error_logging()
+
 # --- MAIN WINDOW CLASS ---
 class JarvisMainWindow(QWidget):
     def __init__(self):
@@ -171,9 +220,21 @@ class JarvisMainWindow(QWidget):
 # --- LOGIC ---
 
 def run_brain_task(user_text):
-    response = jarvis_brain.process_user_input(user_text)
-    msg_queue.put(("JARVIS", response))
-    threading.Thread(target=jarvis_voice.speak, args=(response,), daemon=True).start()
+    """
+    Runs the brain logic safely. Catches errors inside the thread so they don't fail silently.
+    """
+    try:
+        response = jarvis_brain.process_user_input(user_text)
+        msg_queue.put(("JARVIS", response))
+        threading.Thread(target=jarvis_voice.speak, args=(response,), daemon=True).start()
+
+    except Exception as e:
+        # 1. Log the error to the file
+        error_msg = traceback.format_exc()
+        logging.error(f"Error in Brain Thread: {error_msg}")
+        
+        # 2. Tell the user something went wrong
+        msg_queue.put(("JARVIS", f"⚠️ I encountered an internal error. Check logs for details."))
 
 def check_message_queue():
     try:
