@@ -134,7 +134,7 @@ def build_exe(target_dir):
         "--workpath", os.path.join(target_dir, "build"), # Keep build files inside temp
         "--specpath", os.path.join(target_dir, "build"),
         "--add-data", os.path.join(target_dir, "ironman_bg.jpg") + ";.",  # Include background image 
-        "--add-data", os.path.join(target_dir, "jarvis_logo.ico") + ";icons",  # Include icons folder
+        "--icon", os.path.join(target_dir, "jarvis_logo.ico"),  # Include icon
         script_path
     ]
     

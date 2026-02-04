@@ -1,3 +1,4 @@
+import sys
 import google.generativeai as genai
 import webbrowser
 import os
@@ -18,12 +19,16 @@ import base64
 
 
 # --- Load Environment Variables ---
-env_path = os.path.join(os.path.dirname(__file__), "userdata", ".env")
-if os.path.exists(env_path):
-    load_dotenv(dotenv_path=env_path)
+if getattr(sys, 'frozen', False):
+    base_path = os.path.dirname(sys.executable)
 else:
-    load_dotenv()  # Load from system environment if .env not found
-    
+    base_path = os.path.dirname(os.path.abspath(__file__))
+env_path = os.path.join(base_path, "userdata", ".env")
+if os.path.exists(env_path):
+    load_dotenv(env_path)
+else:
+    load_dotenv() # Fallback
+
 API_KEY = os.getenv("GOOGLE_AI_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 JARVIS_INTRUCTIONS = """
@@ -76,9 +81,14 @@ for other questions, answer normally based on your knowledge and memory.
 you can explain, be witty, sarcastic, funny, etc.
 
 """
+if not GROQ_API_KEY:
+    print("WARNING: GROQ_API_KEY not found!")
+    groq_client = None
+else:
+    groq_client = Groq(api_key=GROQ_API_KEY) 
+
 
 genai.configure(api_key=API_KEY)
-groq_client = Groq(api_key=GROQ_API_KEY) 
 memory = None
 MEMORY_FILE = "jarvis_memory.json"
 
