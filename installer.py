@@ -33,18 +33,15 @@ if not is_admin():
 # --- Main GUI Setup ---
 root = tk.Tk()
 install_directory = tk.StringVar()
-# Default installation path
 install_directory.set(os.path.join(os.getenv("USERPROFILE"), "Jarvis Assistant"))
 google_api_var = tk.StringVar()
 groq_api_var = tk.StringVar()
 
-# Global variable to store the path of the isolated Python interpreter
 jarvis_python_exe = ""
 
 def run_hidden_command(cmd, cwd=None, check=True):
     """
-    Executes a shell command without showing a console window.
-    Useful for running background processes like pip or git.
+    Executes a shell command.
     """
     startupinfo = None
     creationflags = 0
@@ -55,74 +52,98 @@ def run_hidden_command(cmd, cwd=None, check=True):
         creationflags = subprocess.CREATE_NO_WINDOW
     return subprocess.run(cmd, cwd=cwd, check=check, startupinfo=startupinfo, creationflags=creationflags)
 
+def download_file(url, dest):
+    """
+    Downloads a file using urllib, with a fallback to system 'curl' if that fails.
+    """
+    print(f"[INFO] Downloading {url}...")
+    try:
+        urllib.request.urlretrieve(url, dest)
+        return True
+    except Exception as e:
+        print(f"[WARNING] urllib failed: {e}. Trying curl...")
+        try:
+            # Fallback to Windows curl command
+            subprocess.run(["curl", "-L", "-o", dest, url], check=True, capture_output=True)
+            return True
+        except Exception as e2:
+            print(f"[ERROR] curl failed too: {e2}")
+            return False
+
 def setup_isolated_python(progress_callback):
     """
-    Downloads and installs a standalone Python 3.11 environment.
-    This ensures the app runs independently of the user's system Python.
+    Downloads and installs Python 3.11 in Passive Mode (Visible UI).
     """
     global jarvis_python_exe
     base_dir = os.path.join(os.getenv("USERPROFILE"), "JarvisPythonEnv")
     python_exe = os.path.join(base_dir, "python.exe")
     
-    # Clean up any previous broken installation
+    # Check if we need to clean up a broken install
     if os.path.exists(base_dir) and not os.path.exists(python_exe):
         try: shutil.rmtree(base_dir)
         except: pass
 
-    # If already installed, skip
     if os.path.exists(python_exe):
         jarvis_python_exe = python_exe
         return
 
-    # Download Python installer
     installer_path = os.path.join(os.getenv("TEMP"), "python_installer.exe")
+    
+    # Step 1: Download
+    if not download_file(PYTHON_INSTALLER_URL, installer_path):
+        raise Exception("Failed to download Python. Check internet connection.")
+
     try:
-        urllib.request.urlretrieve(PYTHON_INSTALLER_URL, installer_path)
-        
-        # Silent install arguments
+        # Step 2: Install
+        # We use "/passive" instead of "/quiet" so you can see the progress bar and errors!
+        print("[INFO] Starting Python Installer...")
         cmd = [
-            installer_path, "/quiet", "InstallAllUsers=0", 
-            f"TargetDir={base_dir}", "PrependPath=0", 
-            "Include_test=0", "Include_tcltk=1", "Include_pip=1"
+            installer_path, 
+            "/passive",               # Shows progress bar (User can see errors)
+            "InstallAllUsers=0", 
+            f"TargetDir={base_dir}", 
+            "PrependPath=0", 
+            "Include_test=0", 
+            "Include_tcltk=1", 
+            "Include_pip=1"
         ]
         run_hidden_command(cmd, check=True)
+    except subprocess.CalledProcessError:
+        raise Exception("Python Installer failed. Please look at the installer window for the specific error.")
     finally:
-        # Cleanup installer file
         if os.path.exists(installer_path):
             try: os.remove(installer_path)
             except: pass
 
-    # Verification
     if not os.path.exists(python_exe):
-        raise Exception("Python installation failed. Please check internet connection or antivirus.")
+        raise Exception("Python installation finished but python.exe is missing. Antivirus might have blocked it.")
     
     jarvis_python_exe = python_exe
 
 def install_requirements(target_dir):
     """
-    Installs required Python packages into the isolated environment.
+    Installs libraries using the isolated Python.
     """
     req_path = os.path.join(target_dir, "requirements.txt")
     if os.path.exists(req_path):
         run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "-r", req_path])
     
-    # Always install PyInstaller for the build process
     run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "pyinstaller"])
 
 def build_exe(target_dir):
     """
-    Compiles the Python scripts into a standalone EXE file.
-    Assumes a flat directory structure (all scripts in root).
+    Compiles the app. Assumes all files are in the root directory (Flattened).
     """
-    
-    # Safety Check: If the repo still has 'src' folder, move files out to root
-    # This prevents the ModuleNotFoundError if the user didn't update GitHub correctly
+    # Safety: If src folder exists from git, flatten it
     src_dir = os.path.join(target_dir, "src")
     if os.path.exists(src_dir):
-        print("[INFO] Detected 'src' folder. Flattening structure...")
+        print("[INFO] Flattening src directory...")
         for filename in os.listdir(src_dir):
-            shutil.move(os.path.join(src_dir, filename), os.path.join(target_dir, filename))
-        shutil.rmtree(src_dir) # Remove empty src folder
+            try:
+                shutil.move(os.path.join(src_dir, filename), os.path.join(target_dir, filename))
+            except: pass
+        try: shutil.rmtree(src_dir)
+        except: pass
 
     script_path = os.path.join(target_dir, "jarvis_interface.py")
     assets_dir = os.path.join(target_dir, "assets")
@@ -131,19 +152,14 @@ def build_exe(target_dir):
         print(f"[ERROR] jarvis_interface.py not found at {script_path}")
         return False
 
-    # PyInstaller Command Construction
     cmd = [
         jarvis_python_exe, "-m", "PyInstaller",
         "jarvis_interface.py", 
         "--noconfirm",
         "--onefile",
-        "--windowed", # No console window for the final app
+        "--windowed",
         "--name", EXE_NAME,
-        
-        # Pack the assets folder
         "--add-data", "assets;assets",
-        
-        # Force import of modules to ensure they are packed
         "--hidden-import=jarvis_brain",
         "--hidden-import=jarvis_voice",
         "--hidden-import=jarvis_visualizer",
@@ -153,25 +169,18 @@ def build_exe(target_dir):
         "--hidden-import=pynput"
     ]
     
-    # Add Icon if it exists
     icon_path = os.path.join(assets_dir, "jarvis_logo.ico")
     if os.path.exists(icon_path):
         cmd.insert(-1, f"--icon=assets/jarvis_logo.ico")
     
-    # Run PyInstaller from the target directory
     run_hidden_command(cmd, cwd=target_dir)
     return True
 
 def create_desktop_shortcut(target_dir):
-    """
-    Creates a desktop shortcut using VBScript.
-    This method is more reliable for setting custom icons than PowerShell.
-    """
     exe_path = os.path.join(target_dir, f"{EXE_NAME}.exe")
     desktop = os.path.join(os.getenv("USERPROFILE"), "Desktop")
     shortcut_path = os.path.join(desktop, f"{EXE_NAME}.lnk")
     
-    # VBScript content
     vbs_script = f"""
     Set oWS = WScript.CreateObject("WScript.Shell")
     sLinkFile = "{shortcut_path}"
@@ -187,35 +196,25 @@ def create_desktop_shortcut(target_dir):
     with open(vbs_file, "w") as f:
         f.write(vbs_script)
     
-    # Execute VBScript
     run_hidden_command(["cscript", "//Nologo", vbs_file])
-    
-    # Clean up
     if os.path.exists(vbs_file): os.remove(vbs_file)
 
 def create_env_file():
-    """
-    Saves the API keys to the .env file in the userdata folder.
-    """
     target_dir = install_directory.get()
     userdata_dir = os.path.join(target_dir, "userdata")
     if not os.path.exists(userdata_dir): os.makedirs(userdata_dir)
-    
     with open(os.path.join(userdata_dir, ".env"), 'w') as f:
         f.write(f"GOOGLE_AI_API_KEY={google_api_var.get()}\n")
         f.write(f"GROQ_API_KEY={groq_api_var.get()}\n")
 
 def install_logic_thread(progress_callback, finished_callback):
-    """
-    Main installation logic running in a separate thread.
-    """
     target_dir = install_directory.get()
     try:
         progress_callback(5)
         setup_isolated_python(progress_callback)
         
         progress_callback(15)
-        # Git Operations
+        # Git Clone
         if os.path.exists(os.path.join(target_dir, ".git")):
              run_hidden_command(["git", "pull"], cwd=target_dir)
         else:
@@ -239,8 +238,7 @@ def install_logic_thread(progress_callback, finished_callback):
     time.sleep(1)
     finished_callback()
 
-# --- GUI Implementation (Using Original Text) ---
-
+# --- GUI Setup ---
 def clear_window():
     for widget in root.winfo_children(): widget.destroy()
 
@@ -260,17 +258,10 @@ def step_two_directory():
     clear_window()
     header = tk.Label(root, text="Select Installation Folder", font=("Arial", 14))
     header.pack(pady=20)
-    
     input_frame = tk.Frame(root)
     input_frame.pack(pady=10, padx=20, fill=tk.X)
     ttk.Entry(input_frame, textvariable=install_directory).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
-    
-    def browse_folder():
-        folder = filedialog.askdirectory()
-        if folder: install_directory.set(folder)
-        
-    ttk.Button(input_frame, text="Browse...", command=browse_folder).pack(side=tk.RIGHT)
-    
+    ttk.Button(input_frame, text="Browse...", command=lambda: install_directory.set(filedialog.askdirectory() or install_directory.get())).pack(side=tk.RIGHT)
     btn_frame = tk.Frame(root)
     btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10, padx=20)
     ttk.Button(btn_frame, text="Next >", command=step_three_setup_environment).pack(side=tk.RIGHT)
@@ -280,19 +271,15 @@ def step_three_setup_environment():
     clear_window()
     header = ttk.Label(root, text="Setting Up Environment", font=("Segoe UI", 16, "bold"))
     header.pack(pady=(30, 20))
-    
     content_frame = ttk.Frame(root, padding=20)
     content_frame.pack(fill=tk.BOTH, expand=True)
     form_frame = ttk.Frame(content_frame)
     form_frame.pack(fill=tk.X, padx=20)
     form_frame.columnconfigure(1, weight=1)
-    
     ttk.Label(form_frame, text="Google AI API Key:").grid(row=0, column=0, sticky="w", pady=10)
     ttk.Entry(form_frame, textvariable=google_api_var, width=40).grid(row=0, column=1, sticky="ew", padx=(10, 0), pady=10)
-    
     ttk.Label(form_frame, text="Groq API Key:").grid(row=1, column=0, sticky="w", pady=10)
     ttk.Entry(form_frame, textvariable=groq_api_var, width=40).grid(row=1, column=1, sticky="ew", padx=(10, 0), pady=10)
-    
     btn_frame = ttk.Frame(root, padding=(0,0,0,20))
     btn_frame.pack(side=tk.BOTTOM, fill=tk.X)
     ttk.Button(btn_frame, text="Save and Install", command=step_four_installing).pack(pady=10)
@@ -303,7 +290,6 @@ def step_four_installing():
     header.pack(pady=20)
     pb = ttk.Progressbar(root, orient=tk.HORIZONTAL, length=300, mode='determinate'); pb.pack(pady=20)
     lbl = tk.Label(root, text="Starting..."); lbl.pack()
-    
     def update(val):
         pb['value'] = val
         if val < 15: lbl.config(text="Setting up Python 3.11 Environment...")
@@ -311,7 +297,6 @@ def step_four_installing():
         elif val < 70: lbl.config(text="Installing Libraries...")
         elif val < 90: lbl.config(text="Compiling Jarvis App...")
         else: lbl.config(text="Done!")
-
     threading.Thread(target=install_logic_thread, args=(update, lambda: root.after(0, step_five_finish)), daemon=True).start()
 
 def step_five_finish():
@@ -320,7 +305,6 @@ def step_five_finish():
     header.pack(pady=20)
     desc = tk.Label(root, text=f"The application has been installed to:\n{install_directory.get()}", padx=20)
     desc.pack(pady=10)
-    
     btn_frame = tk.Frame(root)
     btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10, padx=20)
     ttk.Button(btn_frame, text="Finish", command=root.quit).pack(side=tk.RIGHT)
