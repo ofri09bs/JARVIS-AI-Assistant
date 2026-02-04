@@ -7,30 +7,15 @@ import os
 import shutil
 import urllib.request
 import sys
-import ctypes
+import zipfile
 
-# --- Global Configuration ---
+# --- Global Config ---
 REPO_URL = "https://github.com/ofri09bs/JARVIS-AI-Assistant.git"
 EXE_NAME = "Jarvis Assistant"
-PYTHON_INSTALLER_URL = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
+# שימוש בגרסת EMBEDDED (ZIP) במקום במתקין EXE - הרבה יותר יציב!
+PYTHON_ZIP_URL = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip"
+GET_PIP_URL = "https://bootstrap.pypa.io/get-pip.py"
 
-# --- Admin Privileges Check ---
-def is_admin():
-    """Checks if the script is running with administrator privileges."""
-    try:
-        return ctypes.windll.shell32.IsUserAnAdmin()
-    except:
-        return False
-
-# Relaunch as admin if not already
-if not is_admin():
-    try:
-        ctypes.windll.shell32.ShellExecuteW(None, "runas", sys.executable, " ".join(sys.argv), None, 1)
-    except Exception as e:
-        print(f"Error requesting admin: {e}")
-    sys.exit()
-
-# --- Main GUI Setup ---
 root = tk.Tk()
 install_directory = tk.StringVar()
 install_directory.set(os.path.join(os.getenv("USERPROFILE"), "Jarvis Assistant"))
@@ -40,9 +25,6 @@ groq_api_var = tk.StringVar()
 jarvis_python_exe = ""
 
 def run_hidden_command(cmd, cwd=None, check=True):
-    """
-    Executes a shell command.
-    """
     startupinfo = None
     creationflags = 0
     if os.name == 'nt':
@@ -53,77 +35,75 @@ def run_hidden_command(cmd, cwd=None, check=True):
     return subprocess.run(cmd, cwd=cwd, check=check, startupinfo=startupinfo, creationflags=creationflags)
 
 def download_file(url, dest):
-    """
-    Downloads a file using urllib, with a fallback to system 'curl' if that fails.
-    """
     print(f"[INFO] Downloading {url}...")
     try:
         urllib.request.urlretrieve(url, dest)
-        return True
     except Exception as e:
-        print(f"[WARNING] urllib failed: {e}. Trying curl...")
-        try:
-            # Fallback to Windows curl command
-            subprocess.run(["curl", "-L", "-o", dest, url], check=True, capture_output=True)
-            return True
-        except Exception as e2:
-            print(f"[ERROR] curl failed too: {e2}")
-            return False
+        # Fallback to curl if urllib fails
+        subprocess.run(["curl", "-L", "-o", dest, url], check=True, capture_output=True)
 
-def setup_isolated_python(progress_callback):
+def setup_portable_python(progress_callback):
     """
-    Downloads and installs Python 3.11 in Passive Mode (Visible UI).
+    Sets up a Portable (Embedded) Python environment.
+    Does NOT require Admin rights or installation!
     """
     global jarvis_python_exe
     base_dir = os.path.join(os.getenv("USERPROFILE"), "JarvisPythonEnv")
     python_exe = os.path.join(base_dir, "python.exe")
     
-    # Check if we need to clean up a broken install
-    if os.path.exists(base_dir) and not os.path.exists(python_exe):
-        try: shutil.rmtree(base_dir)
-        except: pass
-
+    # אם כבר קיים, נדלג
     if os.path.exists(python_exe):
         jarvis_python_exe = python_exe
         return
 
-    installer_path = os.path.join(os.getenv("TEMP"), "python_installer.exe")
-    
-    # Step 1: Download
-    if not download_file(PYTHON_INSTALLER_URL, installer_path):
-        raise Exception("Failed to download Python. Check internet connection.")
+    # ניקוי התקנה ישנה
+    if os.path.exists(base_dir):
+        try: shutil.rmtree(base_dir)
+        except: pass
+    os.makedirs(base_dir, exist_ok=True)
 
+    zip_path = os.path.join(os.getenv("TEMP"), "python_embed.zip")
+    
     try:
-        # Step 2: Install
-        # We use "/passive" instead of "/quiet" so you can see the progress bar and errors!
-        print("[INFO] Starting Python Installer...")
-        cmd = [
-            installer_path, 
-            "/passive",               # Shows progress bar (User can see errors)
-            "InstallAllUsers=0", 
-            f"TargetDir={base_dir}", 
-            "PrependPath=0", 
-            "Include_test=0", 
-            "Include_tcltk=1", 
-            "Include_pip=1"
-        ]
-        run_hidden_command(cmd, check=True)
-    except subprocess.CalledProcessError:
-        raise Exception("Python Installer failed. Please look at the installer window for the specific error.")
+        # 1. הורדת ה-ZIP
+        download_file(PYTHON_ZIP_URL, zip_path)
+        
+        # 2. חילוץ ה-ZIP
+        print("[INFO] Extracting Python...")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(base_dir)
+            
+        # 3. תיקון קובץ ._pth כדי לאפשר התקנת ספריות (קריטי!)
+        pth_file = os.path.join(base_dir, "python311._pth")
+        if os.path.exists(pth_file):
+            with open(pth_file, 'r') as f:
+                content = f.read()
+            # ביטול ההערה על 'import site'
+            content = content.replace("#import site", "import site")
+            with open(pth_file, 'w') as f:
+                f.write(content)
+        
+        # 4. התקנת PIP (לא מגיע עם הגרסה הניידת)
+        get_pip_path = os.path.join(base_dir, "get-pip.py")
+        download_file(GET_PIP_URL, get_pip_path)
+        
+        print("[INFO] Installing pip...")
+        run_hidden_command([os.path.join(base_dir, "python.exe"), get_pip_path], cwd=base_dir)
+        
     finally:
-        if os.path.exists(installer_path):
-            try: os.remove(installer_path)
+        if os.path.exists(zip_path): 
+            try: os.remove(zip_path)
             except: pass
 
     if not os.path.exists(python_exe):
-        raise Exception("Python installation finished but python.exe is missing. Antivirus might have blocked it.")
+        raise Exception("Portable Python setup failed.")
     
     jarvis_python_exe = python_exe
 
 def install_requirements(target_dir):
-    """
-    Installs libraries using the isolated Python.
-    """
+    # שדרוג pip ו-setuptools ליתר ביטחון
+    run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "--upgrade", "pip", "setuptools", "wheel"])
+    
     req_path = os.path.join(target_dir, "requirements.txt")
     if os.path.exists(req_path):
         run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "-r", req_path])
@@ -131,23 +111,18 @@ def install_requirements(target_dir):
     run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "pyinstaller"])
 
 def build_exe(target_dir):
-    """
-    Compiles the app. Assumes all files are in the root directory (Flattened).
-    """
-    # Safety: If src folder exists from git, flatten it
+    script_path = os.path.join(target_dir, "jarvis_interface.py")
+    assets_dir = os.path.join(target_dir, "assets")
+    
+    # Flattening logic
     src_dir = os.path.join(target_dir, "src")
     if os.path.exists(src_dir):
-        print("[INFO] Flattening src directory...")
-        for filename in os.listdir(src_dir):
-            try:
-                shutil.move(os.path.join(src_dir, filename), os.path.join(target_dir, filename))
+        for f in os.listdir(src_dir):
+            try: shutil.move(os.path.join(src_dir, f), os.path.join(target_dir, f))
             except: pass
         try: shutil.rmtree(src_dir)
         except: pass
 
-    script_path = os.path.join(target_dir, "jarvis_interface.py")
-    assets_dir = os.path.join(target_dir, "assets")
-    
     if not os.path.exists(script_path):
         print(f"[ERROR] jarvis_interface.py not found at {script_path}")
         return False
@@ -191,7 +166,6 @@ def create_desktop_shortcut(target_dir):
     oLink.IconLocation = "{exe_path}, 0"
     oLink.Save
     """
-    
     vbs_file = os.path.join(target_dir, "shortcut.vbs")
     with open(vbs_file, "w") as f:
         f.write(vbs_script)
@@ -211,10 +185,10 @@ def install_logic_thread(progress_callback, finished_callback):
     target_dir = install_directory.get()
     try:
         progress_callback(5)
-        setup_isolated_python(progress_callback)
+        # שינוי: שימוש בגרסה הניידת
+        setup_portable_python(progress_callback)
         
         progress_callback(15)
-        # Git Clone
         if os.path.exists(os.path.join(target_dir, ".git")):
              run_hidden_command(["git", "pull"], cwd=target_dir)
         else:
@@ -238,7 +212,7 @@ def install_logic_thread(progress_callback, finished_callback):
     time.sleep(1)
     finished_callback()
 
-# --- GUI Setup ---
+# --- GUI ---
 def clear_window():
     for widget in root.winfo_children(): widget.destroy()
 
@@ -248,7 +222,6 @@ def step_one_welcome():
     header.pack(pady=20)
     desc = tk.Label(root, text="This wizard will install Jarvis AI Assistant.\nIt includes a dedicated Python environment.\nClick 'Next' to continue.", padx=20)
     desc.pack(pady=10)
-    
     btn_frame = tk.Frame(root)
     btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10, padx=20)
     ttk.Button(btn_frame, text="Next >", command=step_two_directory).pack(side=tk.RIGHT)
