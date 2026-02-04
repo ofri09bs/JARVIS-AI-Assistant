@@ -1,483 +1,238 @@
-import sys
-import psutil
-import datetime
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox
 import threading
-import queue
+import time
+import subprocess
 import os
-import requests
-import logging
-import traceback
-from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QLabel, QProgressBar, QTextEdit, QLineEdit, QFrame,
-                             QSizePolicy, QMessageBox)
-from PyQt6.QtCore import QTimer, Qt, QRectF, QSize
-from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap, QPalette, QBrush
-from PyQt6.QtWidgets import QPushButton
+import urllib.request
+import sys
 
-import jarvis_brain
-import jarvis_visualizer
-import jarvis_voice
+# --- Global Config ---
+REPO_URL = "https://github.com/ofri09bs/JARVIS-AI-Assistant.git"
+EXE_NAME = "Jarvis Assistant"
+PYTHON_INSTALLER_URL = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-amd64.exe"
 
-# --- GLOBAL CONFIGURATION ---
+root = tk.Tk()
+install_directory = tk.StringVar()
+install_directory.set(os.path.join(os.getenv("USERPROFILE"), "Jarvis Assistant"))
+google_api_var = tk.StringVar()
+groq_api_var = tk.StringVar()
 
-def resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
+jarvis_python_exe = ""
 
-    return os.path.join(base_path, relative_path)
+def run_hidden_command(cmd, cwd=None, check=True):
+    startupinfo = None
+    creationflags = 0
+    if os.name == 'nt':
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+        creationflags = subprocess.CREATE_NO_WINDOW
+    return subprocess.run(cmd, cwd=cwd, check=check, startupinfo=startupinfo, creationflags=creationflags)
 
-
-COLOR_BG_TRANSPARENT = QColor(5, 10, 14, 200)
-COLOR_PANEL_TRANSPARENT = QColor(13, 22, 29, 180)
-COLOR_ACCENT = "#00e5ff"
-COLOR_TEXT = "#ffffff"
-is_voice_mode_active = False
-
-BG_IMAGE_PATH = resource_path(os.path.join("assets", "ironman_bg.jpg")) 
-
-STYLESHEET = f"""
-    QWidget {{
-        color: {COLOR_TEXT};
-        font-family: 'Segoe UI', sans-serif;
-    }}
-    QWidget#CentralWidget {{
-        background-color: transparent;
-    }}
-    QFrame#Panel {{
-        background-color: rgba(13, 22, 29, 180);
-        border: 1px solid #1a262f;
-        border-radius: 8px;
-        border-top: 2px solid #005f73;
-    }}
-    QFrame#Panel:hover {{
-        border-top: 2px solid {COLOR_ACCENT};
-    }}
-    QLabel#Title {{
-        color: {COLOR_ACCENT};
-        font-weight: bold;
-        font-size: 11px;
-        text-transform: uppercase;
-        letter-spacing: 1px;
-        background-color: transparent;
-    }}
-    QLabel#Value {{
-        font-size: 20px;
-        font-weight: bold;
-        color: white;
-        background-color: transparent;
-    }}
-    QLabel#SubDetail {{
-        font-size: 10px;
-        color: #7f8c8d;
-        background-color: transparent;
-    }}
-    QProgressBar {{
-        border: 1px solid #1a262f;
-        background-color: rgba(5, 10, 14, 150);
-        height: 6px;
-        border-radius: 3px;
-    }}
-    QProgressBar::chunk {{
-        background-color: {COLOR_ACCENT};
-    }}
-    QLineEdit {{
-        background-color: rgba(8, 16, 24, 200);
-        border: 1px solid #2c3e50;
-        color: {COLOR_ACCENT};
-        padding: 8px;
-        border-radius: 4px;
-    }}
-    QTextEdit {{
-        background-color: rgba(8, 16, 24, 200);
-        border: none;
-        color: #cfd8dc;
-        font-family: 'Consolas', monospace;
-        font-size: 12px;
-    }}
-    QLabel#TimeLabel {{
-        font-size: 38px; font-weight: bold; color: white; font-family: 'Consolas';
-        background-color: transparent;
-    }}
-"""
-
-ui_components = {}
-rotation_angle = 0
-msg_queue = queue.Queue()
-bg_pixmap = None
-
-# --- Error Handling Configuration ---
-
-def setup_error_logging():
-    """
-    Configures the logging system to save errors to a file.
-    """
-    logging.basicConfig(
-        filename='jarvis_errors.log',
-        level=logging.ERROR,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-
-def global_exception_handler(exc_type, exc_value, exc_traceback):
-    """
-    Catches ALL unhandled errors to prevent crashes and log them.
-    """
-    # 1. Ignore keyboard interrupt (Ctrl+C) so we can still stop script manually
-    if issubclass(exc_type, KeyboardInterrupt):
-        sys.__excepthook__(exc_type, exc_value, exc_traceback)
+def setup_isolated_python(progress_callback):
+    global jarvis_python_exe
+    base_dir = os.path.join(os.getenv("USERPROFILE"), "JarvisPythonEnv")
+    python_exe = os.path.join(base_dir, "python.exe")
+    
+    if os.path.exists(python_exe):
+        jarvis_python_exe = python_exe
         return
 
-    # 2. Get the full error message
-    error_msg = "".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
-    
-    # 3. Log it to the file (The "Black Box")
-    logging.error("Uncaught exception:\n" + error_msg)
-    
-    # 4. Show a popup to the user (GUI)
-    # We use Try-Except here too, in case the GUI itself is broken
+    installer_path = os.path.join(os.getenv("TEMP"), "python_installer.exe")
     try:
-        app = QApplication.instance()
-        if app:
-            error_box = QMessageBox()
-            error_box.setIcon(QMessageBox.Icon.Critical)
-            error_box.setWindowTitle("Jarvis Critical Error")
-            error_box.setText("An unexpected error occurred.")
-            error_box.setInformativeText("The error has been logged to jarvis_errors.log")
-            error_box.setDetailedText(error_msg) # Show full details if they click "Show Details"
-            error_box.exec()
-    except:
-        # If GUI fails, just print to stderr
-        print("Critical Error (GUI failed):", error_msg)
+        urllib.request.urlretrieve(PYTHON_INSTALLER_URL, installer_path)
+        cmd = [installer_path, "/quiet", "InstallAllUsers=0", f"TargetDir={base_dir}", "PrependPath=0", "Include_test=0", "Include_tcltk=1", "Include_pip=1"]
+        run_hidden_command(cmd, check=True)
+    finally:
+        if os.path.exists(installer_path): os.remove(installer_path)
 
-# --- Connect the hook ---
-sys.excepthook = global_exception_handler
-setup_error_logging()
+    if not os.path.exists(python_exe):
+        raise Exception("Python installation failed.")
+    jarvis_python_exe = python_exe
 
-# --- MAIN WINDOW CLASS ---
-class JarvisMainWindow(QWidget):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("J.A.R.V.I.S MK.42 INTERFACE")
-        self.resize(1280, 720)
-        self.setObjectName("CentralWidget")
+def install_requirements(target_dir):
+    req_path = os.path.join(target_dir, "requirements.txt")
+    if os.path.exists(req_path):
+        run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "-r", req_path])
+    run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "pyinstaller"])
+
+def build_exe(target_dir):
+
+    script_path = os.path.join(target_dir, "jarvis_interface.py")
+    assets_dir = os.path.join(target_dir, "assets")
+    
+    if not os.path.exists(script_path):
+        print(f"[ERROR] jarvis_interface.py not found in {target_dir}")
+        return False
+
+    cmd = [
+        jarvis_python_exe, "-m", "PyInstaller",
+        "jarvis_interface.py", 
+        "--noconfirm",
+        "--onefile",
+        "--windowed",
+        "--name", EXE_NAME,
         
-        global bg_pixmap
-        if os.path.exists(BG_IMAGE_PATH):
-            bg_pixmap = QPixmap(BG_IMAGE_PATH)
+        "--add-data", "assets;assets",
+        
+        "--hidden-import=jarvis_brain",
+        "--hidden-import=jarvis_voice",
+        "--hidden-import=jarvis_visualizer",
+        "--hidden-import=groq",
+        "--hidden-import=google.generativeai",
+        "--hidden-import=PIL",
+        "--hidden-import=pynput"
+    ]
+    
+    icon_path = os.path.join(assets_dir, "jarvis_logo.ico")
+    if os.path.exists(icon_path):
+        cmd.insert(-1, f"--icon=assets/jarvis_logo.ico")
+    
+    run_hidden_command(cmd, cwd=target_dir)
+    return True
+
+def create_desktop_shortcut(target_dir):
+    exe_path = os.path.join(target_dir, f"{EXE_NAME}.exe")
+    desktop = os.path.join(os.getenv("USERPROFILE"), "Desktop")
+    shortcut_path = os.path.join(desktop, f"{EXE_NAME}.lnk")
+    
+    ps_script = f"""
+    $s=(New-Object -COM WScript.Shell).CreateShortcut('{shortcut_path}');
+    $s.TargetPath='{exe_path}';
+    $s.WorkingDirectory='{target_dir}';
+    $s.Description='Launch Jarvis Assistant';
+    $s.IconLocation='{exe_path},0'; 
+    $s.Save()
+    """
+    run_hidden_command(["powershell", "-Command", ps_script])
+
+def create_env_file():
+    target_dir = install_directory.get()
+    userdata_dir = os.path.join(target_dir, "userdata")
+    if not os.path.exists(userdata_dir): os.makedirs(userdata_dir)
+    with open(os.path.join(userdata_dir, ".env"), 'w') as f:
+        f.write(f"GOOGLE_AI_API_KEY={google_api_var.get()}\n")
+        f.write(f"GROQ_API_KEY={groq_api_var.get()}\n")
+
+def install_logic_thread(progress_callback, finished_callback):
+    target_dir = install_directory.get()
+    try:
+        progress_callback(5)
+        setup_isolated_python(progress_callback)
+        
+        progress_callback(15)
+        if os.path.exists(os.path.join(target_dir, ".git")):
+             run_hidden_command(["git", "pull"], cwd=target_dir)
         else:
-             QMessageBox.critical(self, "Error", f"Image '{BG_IMAGE_PATH}' not found!")
-             sys.exit(1)
-
-        self.anim_timer = QTimer(self)
-        self.anim_timer.timeout.connect(self.update_animation)
-        self.anim_timer.start(30)
-
-    def update_animation(self):
-        global rotation_angle
-        rotation_angle = (rotation_angle + 3) % 360
-        self.update()
-
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-
-        # 1. Background Image
-        if bg_pixmap:
-            scaled_bg = bg_pixmap.scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
-            x = (self.width() - scaled_bg.width()) // 2
-            y = (self.height() - scaled_bg.height()) // 2
-            painter.drawPixmap(x, y, scaled_bg)
-
-        # 2. Draw the Arc Reactor
-        cx = (self.width() / 2) + 8.9
+            if not os.path.exists(target_dir): os.makedirs(target_dir)
+            run_hidden_command(["git", "clone", "--depth", "1", REPO_URL, target_dir])
         
-        cy = self.height() * 0.765
+        progress_callback(40)
+        install_requirements(target_dir)
         
-        reactor_size = self.height() * 0.08 
-
-        painter.translate(cx, cy)
-        painter.rotate(rotation_angle)
+        progress_callback(70)
+        build_exe(target_dir)
         
-        # Glow Rings
-        pen = QPen(QColor(COLOR_ACCENT))
-        pen.setWidth(int(reactor_size * 0.08)) 
-        painter.setPen(pen)
-        
-        r_outer = reactor_size
-        r_inner = reactor_size * 0.70
-        
-        rect_outer = QRectF(-r_outer, -r_outer, r_outer*2, r_outer*2)
-        painter.drawArc(rect_outer, rotation_angle * 2, 100 * 16)
-        painter.drawArc(rect_outer, (rotation_angle + 180) * 2, 100 * 16)
-        
-        rect_inner = QRectF(-r_inner, -r_inner, r_inner*2, r_inner*2)
-        painter.drawArc(rect_inner, -rotation_angle * 3, 120 * 16)
-        painter.drawArc(rect_inner, -(rotation_angle + 180) * 3, 120 * 16)
-        
-        # Core
-        painter.rotate(-rotation_angle * 2.5)
-        pen_core = QPen(QColor("white"), int(reactor_size * 0.1))
-        painter.setPen(pen_core)
-        painter.setBrush(QColor(COLOR_ACCENT))
-        r_core = reactor_size * 0.3
-        painter.drawEllipse(int(-r_core), int(-r_core), int(r_core*2), int(r_core*2))
-
-        painter.end()
-
-# --- LOGIC ---
-
-def run_brain_task(user_text):
-    """
-    Runs the brain logic safely. Catches errors inside the thread so they don't fail silently.
-    """
-    try:
-        response = jarvis_brain.process_user_input(user_text)
-        msg_queue.put(("JARVIS", response))
-        threading.Thread(target=jarvis_voice.speak, args=(response,), daemon=True).start()
+        progress_callback(90)
+        create_env_file()
+        create_desktop_shortcut(target_dir)
+        progress_callback(100)
 
     except Exception as e:
-        # 1. Log the error to the file
-        error_msg = traceback.format_exc()
-        logging.error(f"Error in Brain Thread: {error_msg}")
+        messagebox.showerror("Error", f"Installation Failed:\n{str(e)}")
+    
+    time.sleep(1)
+    finished_callback()
+
+# --- GUI (Original Text Restored) ---
+def clear_window():
+    for widget in root.winfo_children(): widget.destroy()
+
+def step_one_welcome():
+    clear_window()
+    header = tk.Label(root, text="Welcome to the Installer", font=("Arial", 16, "bold"))
+    header.pack(pady=20)
+    desc = tk.Label(root, text="This wizard will install Jarvis AI Assistant.\nIt includes a dedicated Python environment.\nClick 'Next' to continue.", padx=20)
+    desc.pack(pady=10)
+    
+    btn_frame = tk.Frame(root)
+    btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10, padx=20)
+    ttk.Button(btn_frame, text="Next >", command=step_two_directory).pack(side=tk.RIGHT)
+    ttk.Button(btn_frame, text="Cancel", command=root.quit).pack(side=tk.RIGHT, padx=5)
+
+def step_two_directory():
+    clear_window()
+    header = tk.Label(root, text="Select Installation Folder", font=("Arial", 14))
+    header.pack(pady=20)
+    
+    input_frame = tk.Frame(root)
+    input_frame.pack(pady=10, padx=20, fill=tk.X)
+    ttk.Entry(input_frame, textvariable=install_directory).pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
+    
+    def browse_folder():
+        folder = filedialog.askdirectory()
+        if folder: install_directory.set(folder)
         
-        # 2. Tell the user something went wrong
-        msg_queue.put(("JARVIS", f"⚠️ I encountered an internal error. Check logs for details."))
+    ttk.Button(input_frame, text="Browse...", command=browse_folder).pack(side=tk.RIGHT)
+    
+    btn_frame = tk.Frame(root)
+    btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10, padx=20)
+    ttk.Button(btn_frame, text="Next >", command=step_three_setup_environment).pack(side=tk.RIGHT)
+    ttk.Button(btn_frame, text="< Back", command=step_one_welcome).pack(side=tk.RIGHT, padx=5)
 
-def check_message_queue():
-    try:
-        message_data = msg_queue.get_nowait()
-        
-        if isinstance(message_data, str):
-            sender, text = "JARVIS", message_data
-        else:
-            sender, text = message_data 
+def step_three_setup_environment():
+    clear_window()
+    header = ttk.Label(root, text="Setting Up Environment", font=("Segoe UI", 16, "bold"))
+    header.pack(pady=(30, 20))
+    
+    content_frame = ttk.Frame(root, padding=20)
+    content_frame.pack(fill=tk.BOTH, expand=True)
+    form_frame = ttk.Frame(content_frame)
+    form_frame.pack(fill=tk.X, padx=20)
+    form_frame.columnconfigure(1, weight=1)
+    
+    ttk.Label(form_frame, text="Google AI API Key:").grid(row=0, column=0, sticky="w", pady=10)
+    ttk.Entry(form_frame, textvariable=google_api_var, width=40).grid(row=0, column=1, sticky="ew", padx=(10, 0), pady=10)
+    
+    ttk.Label(form_frame, text="Groq API Key:").grid(row=1, column=0, sticky="w", pady=10)
+    ttk.Entry(form_frame, textvariable=groq_api_var, width=40).grid(row=1, column=1, sticky="ew", padx=(10, 0), pady=10)
+    
+    btn_frame = ttk.Frame(root, padding=(0,0,0,20))
+    btn_frame.pack(side=tk.BOTTOM, fill=tk.X)
+    ttk.Button(btn_frame, text="Save and Install", command=step_four_installing).pack(pady=10)
 
-        chat_box = ui_components['chat']
-        
-        if sender == "USER":
-            timestamp = datetime.datetime.now().strftime("[%H:%M]")
-            chat_box.append(f"<span style='color: #7f8c8d;'>{timestamp} USER:</span> {text}")
-        else:
-            chat_box.append(f"<span style='color: {COLOR_ACCENT};'>➜ JARVIS:</span> {text}\n")
-            
-        sb = chat_box.verticalScrollBar()
-        sb.setValue(sb.maximum())
-        
-    except queue.Empty:
-        pass
+def step_four_installing():
+    clear_window()
+    header = tk.Label(root, text="Installing...", font=("Arial", 14))
+    header.pack(pady=20)
+    pb = ttk.Progressbar(root, orient=tk.HORIZONTAL, length=300, mode='determinate'); pb.pack(pady=20)
+    lbl = tk.Label(root, text="Starting..."); lbl.pack()
+    
+    def update(val):
+        pb['value'] = val
+        if val < 15: lbl.config(text="Setting up Python 3.11 Environment...")
+        elif val < 40: lbl.config(text="Downloading Repository...")
+        elif val < 70: lbl.config(text="Installing Libraries...")
+        elif val < 90: lbl.config(text="Compiling Jarvis App...")
+        else: lbl.config(text="Done!")
 
-def toggle_voice_mode():
-    global is_voice_mode_active
-    
-    # Toggle the state
-    is_voice_mode_active = not is_voice_mode_active
-    
-    # Update UI Button visual state
-    btn = ui_components['mic_btn']
-    if is_voice_mode_active:
-        btn.setStyleSheet(f"background-color: {COLOR_ACCENT}; color: black; border-radius: 20px; font-weight: bold;")
-        # Start the loop in a thread
-        threading.Thread(target=voice_loop_task, daemon=True).start()
-    else:
-        btn.setStyleSheet(f"background-color: {COLOR_PANEL_TRANSPARENT.name()}; color: {COLOR_ACCENT}; border: 1px solid {COLOR_ACCENT}; border-radius: 20px;")
+    threading.Thread(target=install_logic_thread, args=(update, lambda: root.after(0, step_five_finish)), daemon=True).start()
 
-def voice_loop_task():
-    global is_voice_mode_active
+def step_five_finish():
+    clear_window()
+    header = tk.Label(root, text="Installation Complete!", font=("Arial", 14, "bold"), fg="green")
+    header.pack(pady=20)
+    desc = tk.Label(root, text=f"The application has been installed to:\n{install_directory.get()}", padx=20)
+    desc.pack(pady=10)
     
-    while is_voice_mode_active:
-        user_text = jarvis_voice.listen_dynamic()
-        
-        if user_text:
-            ui_components['input'].setText(user_text)
-            
-            # 1.send user text to chat display
-            msg_queue.put(("USER", user_text)) 
-            
-            # 2. Process in brain
-            response = jarvis_brain.process_user_input(user_text)
-            
-            # 3. Send JARVIS response to chat display
-            msg_queue.put(("JARVIS", response))
-            
-            # 4. Speak response
-            jarvis_voice.speak(response)
-            
-            # Clear input field
-            ui_components['input'].clear()
-            
-        if not is_voice_mode_active:
-            break
-
-
-def get_current_temperature(lat=32.72, lon=35.29, callback=None):
-    try:
-        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
-        response = requests.get(url, timeout=5).json()
-        temp = response.get("current_weather", {}).get("temperature", "N/A")
-        if callback:
-            callback(temp)
-    except Exception as e:
-        print(f"[Weather Error]: {e}")
-        if callback:
-            callback("N/A")
-
-def weather_callback(data):
-    if data != "N/A":
-        ui_components['weather_val'].setText(f"{data}°C")
-    else:
-        ui_components['weather_val'].setText("N/A")
-
-threading.Thread(target=get_current_temperature, args=(32.72, 35.29, weather_callback), daemon=True).start()
-
-def update_system_stats():
-    cpu = psutil.cpu_percent()
-    ui_components['cpu_val'].setText(f"{cpu}%")
-    ui_components['cpu_bar'].setValue(int(cpu))
-    ram = psutil.virtual_memory().percent
-    ui_components['ram_val'].setText(f"{ram}%")
-    ui_components['ram_bar'].setValue(int(ram))
-    hdd = psutil.disk_usage('/')
-    free_gb = hdd.free / (1024**3)
-    percent = hdd.percent
-    ui_components['disk_val'].setText(f"{int(free_gb)} GB Free")
-    ui_components['disk_bar'].setValue(int(percent))
-    now = datetime.datetime.now()
-    ui_components['time_lbl'].setText(now.strftime("%H:%M:%S"))
-
-def handle_user_input():
-    input_field = ui_components['input']
-    chat_box = ui_components['chat']
-    text = input_field.text()
-    if not text: return
-    timestamp = datetime.datetime.now().strftime("[%H:%M]")
-    chat_box.append(f"<span style='color: #7f8c8d;'>{timestamp} USER:</span> {text}")
-    input_field.clear()
-    threading.Thread(target=run_brain_task, args=(text,), daemon=True).start()
-
-def create_stat_panel(title, initial_value, sub_text=""):
-    panel = QFrame()
-    panel.setObjectName("Panel")
-    layout = QVBoxLayout(panel)
-    layout.setContentsMargins(15, 12, 15, 12)
-    layout.setSpacing(5)
-    lbl_title = QLabel(title); lbl_title.setObjectName("Title"); layout.addWidget(lbl_title)
-    lbl_value = QLabel(initial_value); lbl_value.setObjectName("Value"); layout.addWidget(lbl_value)
-    if sub_text:
-        lbl_sub = QLabel(sub_text); lbl_sub.setObjectName("SubDetail"); layout.addWidget(lbl_sub)
-        return panel, lbl_value, None
-    pbar = QProgressBar(); pbar.setTextVisible(False); pbar.setValue(0); layout.addWidget(pbar)
-    return panel, lbl_value, pbar
-
-# --- MAIN ---
-
-def main():
-    app = QApplication(sys.argv)
-    app.setStyleSheet(STYLESHEET)
-    
-    window = JarvisMainWindow()
-    
-    # --- Main Layout (3 Columns) ---
-    main_layout = QHBoxLayout(window)
-    main_layout.setSpacing(10)
-    main_layout.setContentsMargins(25, 25, 25, 25)
-    
-    # === LEFT COLUMN (Stats) ===
-    col_left = QVBoxLayout()
-    lbl_time = QLabel("00:00:00"); lbl_time.setObjectName("TimeLabel")
-    col_left.addWidget(lbl_time); ui_components['time_lbl'] = lbl_time
-    col_left.addSpacing(20)
-    
-    panel_cpu, lbl_cpu, bar_cpu = create_stat_panel("CPU LOAD", "0%")
-    panel_ram, lbl_ram, bar_ram = create_stat_panel("RAM", "0%")
-    panel_disk, lbl_disk, bar_disk = create_stat_panel("STORAGE SPACE", "Calculating...")
-    panel_weather, lbl_weather, _ = create_stat_panel("LOCAL WEATHER", "Loading...", "Humidity: 65% | Wind: 12km/h")
-    ui_components['weather_val'] = lbl_weather
-    
-    col_left.addWidget(panel_cpu); col_left.addWidget(panel_ram); col_left.addWidget(panel_disk); col_left.addWidget(panel_weather)
-    col_left.addStretch()
-    
-    ui_components['cpu_val'] = lbl_cpu; ui_components['cpu_bar'] = bar_cpu
-    ui_components['ram_val'] = lbl_ram; ui_components['ram_bar'] = bar_ram
-    ui_components['disk_val'] = lbl_disk; ui_components['disk_bar'] = bar_disk
-
-    # === CENTER COLUMN (Arc Reactor + Visualizer) ===
-    col_center = QVBoxLayout()
-    col_center.addStretch(5)
-    
-    visualizer = jarvis_visualizer.AudioVisualizer()
-    col_center.addWidget(visualizer) 
-    col_center.addSpacing(10) 
-   # === RIGHT COLUMN (Chat and mic) ===
-    col_right = QVBoxLayout()
-    panel_chat = QFrame(); panel_chat.setObjectName("Panel")
-    chat_layout = QVBoxLayout(panel_chat)
-    
-    # 1. Title
-    lbl_chat = QLabel("SECURE LINK"); lbl_chat.setObjectName("Title"); chat_layout.addWidget(lbl_chat)
-    
-    chat_box = QTextEdit(); chat_box.setReadOnly(True); 
-    chat_layout.addWidget(chat_box, 1) 
-    
-    # --- Input Area Layout (Row) ---
-    input_layout = QHBoxLayout()
-    
-    # 3. Input field
-    input_field = QLineEdit()
-    input_field.setPlaceholderText("Execute command protocol...")
-    input_field.setMinimumHeight(40) 
-    input_field.returnPressed.connect(handle_user_input)
-    
-    # 4. Microphone button
-    from PyQt6.QtWidgets import QPushButton
-    btn_mic = QPushButton("🎤")
-    btn_mic.setFixedSize(40, 40)
-    btn_mic.setCursor(Qt.CursorShape.PointingHandCursor)
-    btn_mic.setStyleSheet(f"""
-        QPushButton {{
-            background-color: {COLOR_PANEL_TRANSPARENT.name()};
-            color: {COLOR_ACCENT};
-            border: 1px solid {COLOR_ACCENT};
-            border-radius: 20px;
-            font-size: 16px;
-        }}
-    """)
-    # Connecting to the toggle function
-    btn_mic.clicked.connect(toggle_voice_mode) 
-    
-    input_layout.addWidget(input_field) 
-    input_layout.addWidget(btn_mic)
-    
-    # Adding the input row to the bottom of the panel
-    chat_layout.addLayout(input_layout) 
-    
-    # Finishing and adding to the main panel
-    col_right.addWidget(panel_chat)
-    
-    # saving UI components for later use
-    ui_components['chat'] = chat_box
-    ui_components['input'] = input_field
-    ui_components['mic_btn'] = btn_mic
-
-    # --- Add Columns to Main Layout ---
-    main_layout.addLayout(col_left, 1)   # Left (25%)
-    main_layout.addLayout(col_center, 2) # Center (50%) - Invisible layout for visualizer
-    main_layout.addLayout(col_right, 1)  # Right (25%)
-
-    # --- Timers ---
-    t_stats = QTimer(window)
-    t_stats.timeout.connect(update_system_stats)
-    t_stats.start(1000)
-    
-    t_brain = QTimer(window)
-    t_brain.timeout.connect(check_message_queue)
-    t_brain.start(100)
-
-    window.show()
-    sys.exit(app.exec())
+    btn_frame = tk.Frame(root)
+    btn_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=10, padx=20)
+    ttk.Button(btn_frame, text="Finish", command=root.quit).pack(side=tk.RIGHT)
 
 if __name__ == "__main__":
-    main()
+    root.title("Jarvis Assistant Installer")
+    root.geometry("500x400")
+    if os.path.exists("jarvis_logo.ico"): root.iconbitmap("jarvis_logo.ico")
+    step_one_welcome()
+    root.mainloop()
