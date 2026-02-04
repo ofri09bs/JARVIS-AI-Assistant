@@ -12,7 +12,6 @@ import zipfile
 # --- Global Config ---
 REPO_URL = "https://github.com/ofri09bs/JARVIS-AI-Assistant.git"
 EXE_NAME = "Jarvis Assistant"
-# שימוש בגרסת EMBEDDED (ZIP) במקום במתקין EXE - הרבה יותר יציב!
 PYTHON_ZIP_URL = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip"
 GET_PIP_URL = "https://bootstrap.pypa.io/get-pip.py"
 
@@ -111,44 +110,80 @@ def install_requirements(target_dir):
     run_hidden_command([jarvis_python_exe, "-m", "pip", "install", "pyinstaller"])
 
 def build_exe(target_dir):
+    # המרת הנתיב לנתיב מוחלט כדי למנוע בלבול
+    target_dir = os.path.abspath(target_dir)
     script_path = os.path.join(target_dir, "jarvis_interface.py")
     assets_dir = os.path.join(target_dir, "assets")
     
-    # Flattening logic
+    print(f"[INFO] Building EXE in: {target_dir}")
+
+    # 1. Flattening logic - העברת קבצים מתיקיית src אם קיימת
     src_dir = os.path.join(target_dir, "src")
     if os.path.exists(src_dir):
+        print("[INFO] Flattening src directory...")
         for f in os.listdir(src_dir):
             try: shutil.move(os.path.join(src_dir, f), os.path.join(target_dir, f))
             except: pass
         try: shutil.rmtree(src_dir)
         except: pass
 
+    # 2. ניקוי שאריות מבניות קודמות (חשוב מאוד!)
+    # זה מונע מ-PyInstaller להשתמש ב-Cache שגוי שבו הקובץ חסר
+    for junk in ["build", "dist", "__pycache__"]:
+        junk_path = os.path.join(target_dir, junk)
+        if os.path.exists(junk_path):
+            try: shutil.rmtree(junk_path)
+            except: pass
+    
+    spec_file = os.path.join(target_dir, f"{EXE_NAME}.spec")
+    if os.path.exists(spec_file):
+        try: os.remove(spec_file)
+        except: pass
+
+    # 3. בדיקה שהקבצים קיימים פיזית לפני הבנייה
+    if not os.path.exists(os.path.join(target_dir, "jarvis_brain.py")):
+        print("[ERROR] jarvis_brain.py is MISSING from the directory!")
+        return False
+
     if not os.path.exists(script_path):
         print(f"[ERROR] jarvis_interface.py not found at {script_path}")
         return False
 
+    # 4. פקודת הבנייה המשופרת
     cmd = [
         jarvis_python_exe, "-m", "PyInstaller",
         "jarvis_interface.py", 
         "--noconfirm",
+        "--clean",  # ניקוי מטמון של PyInstaller
         "--onefile",
         "--windowed",
         "--name", EXE_NAME,
+        f"--paths={target_dir}", # שימוש בנתיב המוחלט
         "--add-data", "assets;assets",
+        # הוספת המודולים בצורה מפורשת
         "--hidden-import=jarvis_brain",
         "--hidden-import=jarvis_voice",
         "--hidden-import=jarvis_visualizer",
         "--hidden-import=groq",
         "--hidden-import=google.generativeai",
         "--hidden-import=PIL",
-        "--hidden-import=pynput"
+        "--hidden-import=pynput",
+        "--hidden-import=pyautogui" # הוספתי גם את זה ליתר ביטחון
     ]
     
     icon_path = os.path.join(assets_dir, "jarvis_logo.ico")
     if os.path.exists(icon_path):
-        cmd.insert(-1, f"--icon=assets/jarvis_logo.ico")
+        cmd.insert(-1, f"--icon={icon_path}")
     
-    run_hidden_command(cmd, cwd=target_dir)
+    print("[INFO] Running PyInstaller...")
+    result = run_hidden_command(cmd, cwd=target_dir)
+    
+    # בדיקת תוצאת הבנייה
+    if result.returncode != 0:
+        print(f"[ERROR] PyInstaller failed.\nSTDOUT: {result.stdout}\nSTDERR: {result.stderr}")
+        return False
+        
+    print("[INFO] Build successful.")
     return True
 
 def create_desktop_shortcut(target_dir):
