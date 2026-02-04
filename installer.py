@@ -99,6 +99,7 @@ def build_exe(target_dir):
     Runs PyInstaller to create the EXE file.
     """
     script_path = os.path.join(target_dir, ENTRY_POINT_SCRIPT)
+    assets_dir = os.path.join(target_dir, "assets")
 
     if not os.path.exists(script_path):
         print(f"Error: Could not find {ENTRY_POINT_SCRIPT} in {target_dir}")
@@ -113,7 +114,7 @@ def build_exe(target_dir):
         "--distpath", target_dir,  # Output exe directly to install folder
         "--workpath", os.path.join(target_dir, "build"), # Keep build files inside temp
         "--specpath", os.path.join(target_dir, "build"),
-        "--add-data", os.path.join(target_dir, "assets", "ironman_bg.jpg") + ";.",  # Include background image 
+        f"--add-data={assets_dir};assets",  # Include background image 
         "--exclude-module=tkinter",
         "--exclude-module=_tkinter",
         "--exclude-module=tcl",
