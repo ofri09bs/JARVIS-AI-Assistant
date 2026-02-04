@@ -12,6 +12,7 @@ import zipfile
 # --- Global Config ---
 REPO_URL = "https://github.com/ofri09bs/JARVIS-AI-Assistant.git"
 EXE_NAME = "Jarvis Assistant"
+ENTRY_POINT_SCRIPT = "jarvis_interface.py"  
 PYTHON_ZIP_URL = "https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip"
 GET_PIP_URL = "https://bootstrap.pypa.io/get-pip.py"
 
@@ -99,74 +100,37 @@ def setup_portable_python(progress_callback):
     jarvis_python_exe = python_exe
 
 def build_exe(target_dir):
-    target_dir = os.path.abspath(target_dir)
-    script_path = os.path.join(target_dir, "jarvis_interface.py")
-    
-    print(f"[INFO] Building inside: {target_dir}")
+    """
+    Runs PyInstaller to create the EXE file.
+    """
+    script_path = os.path.join(target_dir, ENTRY_POINT_SCRIPT)
 
-    # Flattening logic
-    src_dir = os.path.join(target_dir, "src")
-    if os.path.exists(src_dir):
-        for f in os.listdir(src_dir):
-            try: shutil.move(os.path.join(src_dir, f), os.path.join(target_dir, f))
-            except: pass
-        try: shutil.rmtree(src_dir)
-        except: pass
-
-    # וידוא שקובץ המוח נמצא
-    if not os.path.exists(os.path.join(target_dir, "jarvis_brain.py")):
-        print("[ERROR] jarvis_brain.py missing!")
+    if not os.path.exists(script_path):
+        print(f"Error: Could not find {ENTRY_POINT_SCRIPT} in {target_dir}")
         return False
 
-    # פקודת PyInstaller סופר-מפורשת
+    # Command to build: onefile, windowed (no console), distpath = installation folder
     cmd = [
-        jarvis_python_exe, "-m", "PyInstaller",
-        "jarvis_interface.py", 
+        "pyinstaller",
         "--noconfirm",
-        "--clean",           # ניקוי Cache
         "--onefile",
-        "--windowed",
+        "--windowed",  
         "--name", EXE_NAME,
-        f"--paths={target_dir}", # נתיב חיפוש מפורש
-        "--add-data", "assets;assets",
-        # איסוף אגרסיבי של המודולים
-        "--hidden-import=jarvis_brain",
-        "--collect-all=jarvis_brain", 
-        "--hidden-import=jarvis_voice",
-        "--hidden-import=jarvis_visualizer",
-        "--hidden-import=groq",
-        "--hidden-import=google.generativeai",
-        "--hidden-import=PIL",
-        "--hidden-import=pynput"
-    ]
-    
+        "--distpath", target_dir,  # Output exe directly to install folder
+        "--workpath", os.path.join(target_dir, "build"), # Keep build files inside temp
+        "--specpath", os.path.join(target_dir, "build"),
+        "--add-data", os.path.join(target_dir, "assets", "ironman_bg.jpg") + ";.",  # Include background image 
+        script_path
+    ]   
+
+    # add icon
     icon_path = os.path.join(target_dir, "assets", "jarvis_logo.ico")
     if os.path.exists(icon_path):
         cmd.insert(-1, f"--icon={icon_path}")
-    
-    # הרצת הפקודה עם סביבת עבודה מעודכנת
-    env = os.environ.copy()
-    env["PYTHONPATH"] = target_dir + ";" + env.get("PYTHONPATH", "")
-    
-    startupinfo = subprocess.STARTUPINFO()
-    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
-    startupinfo.wShowWindow = subprocess.SW_HIDE
 
-    print("[INFO] Starting compilation...")
-    result = subprocess.run(
-        cmd, 
-        cwd=target_dir, 
-        env=env, 
-        capture_output=True, 
-        text=True,
-        startupinfo=startupinfo
-    )
-    
-    if result.returncode != 0:
-        print(f"[ERROR] Build Failed:\n{result.stderr}")
-        return False
-        
+    subprocess.run(cmd, cwd=target_dir, check=True)
     return True
+    
 
 def create_desktop_shortcut(target_dir):
     exe_path = os.path.join(target_dir, f"{EXE_NAME}.exe")
@@ -210,7 +174,6 @@ def install_logic_thread(progress_callback, finished_callback):
     target_dir = install_directory.get()
     try:
         progress_callback(5)
-        # שינוי: שימוש בגרסה הניידת
         setup_portable_python(progress_callback)
         
         progress_callback(15)
