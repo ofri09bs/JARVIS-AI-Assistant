@@ -106,7 +106,7 @@ def build_exe(target_dir):
         return False
 
     cmd = [
-        "pyinstaller",
+        jarvis_python_exe, "-m", "PyInstaller",
         "--noconfirm",
         "--onefile",
         "--windowed",  
