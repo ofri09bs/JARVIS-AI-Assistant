@@ -39,7 +39,7 @@ def run_main():
         
         if choice in ['1', 'cli']:
             print(f"{COLOR_GREEN}Launching CLI...{COLOR_RESET}")
-            import jarvis_cli
+            from ui import jarvis_cli
             # Assuming jarvis_cli has a main() function
             if hasattr(jarvis_cli, 'main'):
                 jarvis_cli.main()
@@ -50,7 +50,7 @@ def run_main():
             
         elif choice in ['2', 'gui']:
             print(f"{COLOR_GREEN}Launching GUI...{COLOR_RESET}")
-            import jarvis_interface
+            from ui import jarvis_interface
             # Assuming jarvis_interface has a run_gui() function
             if hasattr(jarvis_interface, 'run_gui'):
                 jarvis_interface.run_gui()

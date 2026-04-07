@@ -14,9 +14,9 @@ from PyQt6.QtCore import QTimer, Qt, QRectF, QSize
 from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap, QPalette, QBrush
 from PyQt6.QtWidgets import QPushButton
 
-import jarvis_brain
-import jarvis_visualizer
-import jarvis_voice
+from core import jarvis_brain
+from features import jarvis_visualizer
+from features import jarvis_voice
     
 # --- GLOBAL CONFIGURATION ---
 

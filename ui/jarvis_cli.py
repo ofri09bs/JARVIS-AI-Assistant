@@ -1,7 +1,7 @@
 import sys
 import time
 import os
-import jarvis_brain
+from core import jarvis_brain
 
 # ANSI color codes for terminal styling
 COLOR_CYAN = '\033[96m'

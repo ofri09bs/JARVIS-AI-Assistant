@@ -159,6 +159,7 @@ def build_exe(target_dir):
         "--distpath", target_dir,
         "--workpath", os.path.join(target_dir, "build"),
         "--specpath", os.path.join(target_dir, "build"),
+        "--paths", target_dir,  # Ensure it can find local modules
         script_path
     ]   
 
