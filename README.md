@@ -1,10 +1,10 @@
-# J.A.R.V.I.S - AI Assistant
+# J.A.R.V.I.S - AI Desktop Assistant
 
 **Just A Rather Very Intelligent System**
 
 An advanced, Iron Man-inspired desktop AI agent built with Python.
 
-**jarvis 3.0 is not just a chatbot.** It creates its own code in real-time. It features a sophisticated **Agentic Workflow** that classifies intent, plans **complex multi-step** tasks using JSON, and safely executes them on your PC.
+**jarvis 4.0 is not just a chatbot.** It creates its own code in real-time. It features a sophisticated **Agentic Workflow** that classifies intent, plans **complex multi-step** tasks using JSON, and safely executes them on your PC.
 
 Jarvis can execute almost **every complex task you will give him**, such as: `Jarvis, I want to code. Open VS Code, create a new python file called 'test.py', and write a Hello World loop inside it. also set the volume to 30% and open youtube for me and search there "Avengers Doomsday leaks" please `. (Jarvis will open VS code , creat a new file , paste there the code , open youtube and searchs there , and also sets the computers volume to 30%. And all of this without ONE precodded command!)
 
@@ -80,21 +80,21 @@ Getting **speech/text** input → Checking for **Hardcoded commands** → decidi
 ## 📦 Installation
 You **do not** need to install Python or libraries manually. The installer handles everything. (I worked very hard for you :)
 
-**1. Get the API Keys**
+### **1. Get the API Keys**
 
 You need a free **Google Gemini** API Key and a **Groq** API KEY
 
 [Get Google AI Key Here](aistudio.google.com)
+
 [Get Groq AI Key Here](console.groq.com/keys)
 
-**2. Run the installer**
+### **2. Run the installer**
 
 Download the exe file `JarvisInstaller.exe` and run it 
 The installation could take from **5 to 10 minutes** 
 
 
-
-**3. Follow the wizard**
+### **3. Follow the wizard**
 
 1. The installer will ask for an Installation Folder.
 
