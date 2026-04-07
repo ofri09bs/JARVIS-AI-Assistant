@@ -12,5 +12,8 @@ logs/*.log
 # Ignore compiled Python files
 *.pyc
 __pycache__/
-
+.vscode/
+# Ignore virtual environment directories
+*.exe
 temp.py
+test_jarvis.py

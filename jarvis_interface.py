@@ -374,7 +374,7 @@ def create_stat_panel(title, initial_value, sub_text=""):
 
 # --- MAIN ---
 
-def main():
+def run_gui():
     app = QApplication(sys.argv)
     app.setStyleSheet(STYLESHEET)
     
@@ -480,4 +480,4 @@ def main():
     sys.exit(app.exec())
 
 if __name__ == "__main__":
-    main()
+    run_gui()

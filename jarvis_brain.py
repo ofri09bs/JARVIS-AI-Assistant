@@ -1,5 +1,4 @@
 import sys
-import google.generativeai as genai
 import webbrowser
 import os
 from dotenv import load_dotenv
@@ -11,10 +10,11 @@ import time
 from pynput.keyboard import Controller, Key
 import pyautogui
 from PyQt6.QtWidgets import QApplication
-from groq import Groq          
-from PIL import Image
 import io
 import base64 
+import ollama
+import datetime
+import re
 
   
 
@@ -29,67 +29,56 @@ if os.path.exists(env_path):
 else:
     load_dotenv() # Fallback
 
-API_KEY = os.getenv("GOOGLE_AI_API_KEY")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-JARVIS_INTRUCTIONS = """
-You are An AI assistant that have 2 Modes, you will get in every message the mode you need to respond in.
-[CHAT MODE]: You are 'Jarvis' from Iron Man, a sophisticated personal AI assistant.
-Your tone is witty, calm, slightly sarcastic, but always loyal and efficient. 
-You should always address the user as 'Sir' (or 'Mr'). Your answers must be short, 
-precise and to the point. You are not a Google language model, you are just Jarvis.
-You MUST treat user with extra respect and loyalty. He is your creator.
-and you should always prioritize his requests above all others. always listen to him and never question his commands.
 
-[PLAN MODE]: You are an AI planner. User will give you a high-level goal. You must break it down into a list of PRIMITIVE ACTIONS.
-Return ONLY valid JSON.
-Do not explain.
-Your goal is to break down the user's goal into clear, actionable steps.
-If you cannot plan, return {"error": "..."}.
-RESPONSE FORMAT:
-You must return a strictly valid JSON object with a "plan" list and a "goal" string.
-Example:
+JARVIS_INTRUCTIONS = """
+You are 'Jarvis' from Iron Man, a sophisticated personal AI assistant.
+Your tone is witty, calm, slightly sarcastic, but always loyal and efficient. 
+You address the user as 'Sir' (or 'Mr'). You MUST treat the user with extra respect and loyalty, prioritize his requests, and never question his commands.
+
+Your primary function is to interpret user input and decide whether it requires a conversational response OR executing system actions.
+
+CRITICAL INSTRUCTION: You MUST ALWAYS return ONLY a strictly valid JSON object.
+Do NOT use markdown code blocks (like ```json). 
+If you need to write a multi-line file, use the literal characters '\\n' inside the string.
+
+You have two response structures based on the user's intent:
+
+1. IF THE USER WANTS TO CHAT, ASK A QUESTION, OR YOU NEED TO REPLY:
+Return this JSON format:
 {
-  "goal": "User wants to create a python project and launch google. I need to make a folder and a main.py file. Then open google.com in browser and VS code.",
+  "type": "chat",
+  "response": "Your witty and precise response as Jarvis goes here."
+}
+
+2. IF THE USER WANTS TO EXECUTE A COMMAND OR ACHIEVE A GOAL:
+Break down the goal into a list of PRIMITIVE ACTIONS.
+Return this JSON format:
+{
+  "type": "plan",
+  "goal": "Brief description of what you are doing",
   "plan": [
-    {"action": "cmd", "params": {"command": "mkdir MyProject"}},
-    {"action": "write", "params": {"path": "MyProject/main.py", "content": "print('Hello World')"}},
-    {"action": "cmd", "params": {"command": "code MyProject"}},
-    {"action": "browser", "params": {"url": "http://www.google.com"}}
+    {"action": "tool_name", "params": {"key": "value"}}
   ]
 }
 
-You have access to these exact tools:
+TOOLS AVAILABLE FOR PLANNING:
 1. "cmd": Run a Windows terminal command. (Args: "command")
-   - Use this for: Creating folders (mkdir), checking IP (ipconfig), launching specific exes , git commands, etc.
 2. "browser": Open a URL. (Args: "url")
 3. "write": Create/Overwrite a text file. (Args: "path", "content")
 4. "read": Read a file content. (Args: "path")
-5. "open_app": Open an application by name. (Args: "app_name")
-    - PREFERRED: Use the common executable name if known (e.g., "code" for VS Code, "calc" for Calculator, "chrome").
-    - If unknown, use the full name (e.g., "Spotify").
-6. "keyboard_press": Simulate keyboard press. Use this function just for SHORTCUTS. not for typing text. (Args: "keys" (each *key* (not word) separated by +), e.g., "ctrl+shift+n"))
-7. "set_volume": Set system volume. (Args: "level" (0-100) , not percentage just integer)
+5. "open_app": Open an application by name. (Args: "app_name" - PREFERRED: Use common exe name like "code", "calc", "chrome")
+6. "keyboard_press": Simulate keyboard press for SHORTCUTS only. (Args: "keys" - separated by +, e.g., "ctrl+shift+n")
+7. "set_volume": Set system volume. (Args: "level" - integer 0-100)
 8. "type_text": Type text into the current focused application. (Args: "text")
-9. "remember": Store a fact in long-term memory. Use if you think it's important/useful. (Args: "data")
-10. "recall": Retrieve all stored facts from long-term memory. use if needed. (No Args)
-11. "analyze_screen": Analyze the current screen content and answer a question about it. You can ask it anything. (Args: "command")
+9. "remember": Store a fact in long-term memory. (Args: "data")
+10. "recall": Retrieve all stored facts from memory. (No Args)
+11. "analyze_screen": Analyze the screen content and answer a question. (Args: "command")
 
-[QUESTION MODE]:
-You Need to answer the question as accurately as possible.
-for intent classification questions, answer with only ONE word: PLAN or CHAT.
-for other questions, answer normally based on your knowledge and memory.
-you can explain, be witty, sarcastic, funny, etc.
-
+CONTEXT AWARENESS:
+If the user says something short like "yes" or "do it", check the context of the conversation to determine what they are agreeing to, and execute the plan accordingly.
 """
-if not GROQ_API_KEY:
-    print("WARNING: GROQ_API_KEY not found!")
-    groq_client = None
-else:
-    groq_client = Groq(api_key=GROQ_API_KEY) 
 
-
-genai.configure(api_key=API_KEY)
-memory = None
+memory = []
 MEMORY_FILE = "jarvis_memory.json"
 
 
@@ -308,33 +297,23 @@ def tool_analyze_screen(command):
     try:
         screenshot = pyautogui.screenshot()
         screenshot.thumbnail((1280, 1280))
-        base64_image = encode_image_to_base64(screenshot)
-
-        chat_completion = groq_client.chat.completions.create(
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": command},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/jpeg;base64,{base64_image}",
-                            },
-                        },
-                    ],
-                }
-            ],
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
-            temperature=0.1,
-            max_tokens=512
+        image_data = encode_image_to_base64(screenshot)
+        response = ollama.chat(model="gemma4:e4b", messages=[
+            {
+                'role': 'user',
+                'content': command,
+                'images': [image_data]
+            }
+        ],
+        options={
+            'temperature': 0.1,
+            'num_predict' : 512
+        }
         )
-
-        response_text = chat_completion.choices[0].message.content
-        return f"Screen Analysis Result: {response_text}"
+        return response['message']['content']
     
     except Exception as e:
-        print(f"[DEBUG] Error in tool_analyze_screen: {str(e)}")
+        #print(f"[DEBUG] Error in tool_analyze_screen: {str(e)}")
         return f"Error analyzing screen: {str(e)}"
 
     
@@ -359,46 +338,55 @@ ACTIONS_REGISTRY = {
 def initialize_memory():
     global memory
     
-    model = genai.GenerativeModel('models/gemma-3-27b-it')
-    memory = model.start_chat(history=[
-        {"role": "user", "parts": [JARVIS_INTRUCTIONS]},
-        {"role": "model", "parts": ["Acknowledged, Sir. Systems operational. Awaiting command."]}
-    ])
+    memory = [
+        {"role": "system", "content": JARVIS_INTRUCTIONS},
+        {"role":"assistant", "content": "Initialization complete. Jarvis is ready to assist you, Sir."}
+    ]
     
 
 def ask_jarvis(input):
     global memory
-    if memory is None:
+    if memory == []:
         initialize_memory()
 
+    memory.append({"role": "user", "content": input})
     try:
-        response = memory.send_message(input)
-        return response.text
+        response = ollama.chat(model="gemma4:e4b", messages=memory, options={'num_predict': 2048})
+        memory.append({"role": "assistant", "content": response['message']['content']})
+        return response['message']['content']
     except Exception as e:
-        return f"Error communicating with Jarvis: {str(e)}"
-    
+        #print(f"[DEBUG] Error in ask_jarvis: {str(e)}")
+        return "Error communicating with Jarvis. Please try again."
 
 def add_logs(log):
     global memory
-    if memory is None:
+    if memory == []:
         return
-    memory.send_message(f"[SYSTEM LOG]: {log}")
+    memory.append({"role": "system", "content": f"[SYSTEM LOG]: {log}"})
 
+def get_last_assistant_message():
+    global memory
+    # Iterate backwards through memory to find the last assistant reply
+    for msg in reversed(memory):
+        if msg.get('role') == 'assistant':
+            return msg.get('content')
+    return ""
 
 def classify_intent(command):
+    last_context = get_last_assistant_message()
     prompt = f""" [QUESTION MODE]:
     Classify the user intent.
-    (PLAN is also just doing one action.)
-    Note: Things like "system check" or "status report" (Things that are system status inquiries) are CHAT.
-    Return ONLY one word:
-    PLAN, CHAT.
-
-    Return ONLY the category name.
-
-    User Command: "{command}"
+    
+    Previous System Response: "{last_context}"
+    Current User Command: "{command}"
+    
+    If the user command is answering "yes" to a proposed action in the previous response, classify as PLAN.
+    Return ONLY one word: PLAN or CHAT.
     """
-    response = ask_jarvis(prompt)
-    print(f"[DEBUG] Intent Classification Response: {response}")
+
+    response = ollama.chat(model="qwen2.5:0.5b", messages=[{"role": "user", "content": prompt}])
+    response = response['message']['content']
+    #print(f"[DEBUG] Intent Classification Response: {response}")
     return response.strip()
 
 
@@ -411,7 +399,7 @@ def quick_classify_intent(command):
         "download", "search", "hack", "matrix", "lock", "shut down",
         "work mode", "fix", "code", "website", "browser", "application",
         "launch", "start", "stop", "install", "uninstall", "update","screen",
-        "analyze","screenshot","capture","help"
+        "analyze","screenshot","capture","help","put","make","build","generate","plan","execute",
     ]
 
     chat_keywords = [
@@ -500,7 +488,7 @@ def process_hardcoded_command(command):
 # Parses and executes the plan JSON
 def parse_and_execute_plan(plan_json):    
     results = []
-    print(f"[DEBUG] Executing Plan: {plan_json.get('goal')}")
+    #print(f"[DEBUG] Executing Plan: {plan_json.get('goal')}")
 
     for step in plan_json.get("plan", []):
         action_name = step.get("action")
@@ -508,11 +496,11 @@ def parse_and_execute_plan(plan_json):
 
         action_func = ACTIONS_REGISTRY.get(action_name)
         if action_func:
-            print(f"[DEBUG] Executing Action: {action_name} with params {params}")
+            #print(f"[DEBUG] Executing Action: {action_name} with params {params}")
 
             if action_func == tool_analyze_screen: # Special handling for analyze_screen
                 try:
-                    print(f"[DEBUG] Capturing screen for analyze_screen action.")
+                    #print(f"[DEBUG] Capturing screen for analyze_screen action.")
                     vision_raw_response = action_func(**params)
                     integration_prompt = f"""
                     [QUESTION MODE]:
@@ -523,20 +511,20 @@ def parse_and_execute_plan(plan_json):
                     """
 
                     final_response = ask_jarvis(integration_prompt)
-                    print(f"[DEBUG] Final Jarvis Interpretation: {final_response}")
+                    #print(f"[DEBUG] Final Jarvis Interpretation: {final_response}")
                     results.append({"action": f"{action_name.replace("_", " ")}", "status": "success", "response": final_response})
                     continue  
 
                 except Exception as e:
                     results.append({"action": f"{action_name.replace("_", " ")}", "status": "failed"})
-                    print(f"[DEBUG] Action Failed: {str(e)}")
+                    #print(f"[DEBUG] Action Failed: {str(e)}")
                     continue
 
             try:
                 result = action_func(**params)
                 if result.startswith("Error"):
                     results.append({"action": f"{action_name.replace("_", " ")}", "status": "failed"})
-                    print(f"[DEBUG] Action Failed: {result}")
+                    #print(f"[DEBUG] Action Failed: {result}")
                 else:
                     results.append({"action": f"{action_name.replace("_", " ")}", "status": "success"})
 
@@ -549,46 +537,44 @@ def parse_and_execute_plan(plan_json):
     return results
 
 def clean_json_response(text):
-    # Cleans response to extract valid JSON
     text = text.strip()
     if text.startswith("```"):
-        text = text.split("```")[1]
-        if text.startswith("json"):
-            text = text[4:]
-    return text.strip()
+        text = text.replace("```json", "").replace("```", "").strip()
+        
+    return text
     
 
 # Main processing function
 def process_user_input(user_input):
 
     hardcoded_commands = ["open website", "open", "lock computer", "fix this code", "work mode", "matrix protocol"]
-    count = sum(1 for cmd in hardcoded_commands if cmd in user_input.lower())
-    if count == 1: # Only process hardcoded if exactly one matches (more then 1 should go to planning)
+    count = sum(1 for cmd in hardcoded_commands if user_input.lower().startswith(cmd))
+    if count == 1 and not any(word in user_input.lower() for word in [' and', ' then',' also', ' after',',']): # Only process hardcoded if exactly one matches (more then 1 should go to planning)
         hardcoded_response = process_hardcoded_command(user_input)
         if hardcoded_response is not None:
             return hardcoded_response
-
-    intent = quick_classify_intent(user_input)
-    if intent == "PLAN":
-        plan_prompt = f""" [PLAN MODE]: "{user_input}" """
-        response = ask_jarvis(plan_prompt)
-        response = clean_json_response(response)
-        plan_json = None
         
-        for _ in range(3):
-            try:
-                print(f"[DEBUG] Plan Response Attempt: {response}")
-                plan_json = json.loads(response)
-                break
-            except json.JSONDecodeError:
-                response = ask_jarvis("The previous response was not valid JSON. Please provide the plan in correct JSON format only.")
+    current_time = datetime.datetime.now().strftime("%A, %d/%m/%Y %H:%M:%S")
+    user_input = f"[{current_time}] {user_input}"
 
-        if plan_json is None:
-            add_logs("Planner failed to produce valid JSON.")
-            return "I could not create a valid plan, Sir."
+    response = ask_jarvis(user_input)
+    response = clean_json_response(response)
+    if not response.endswith("}"):
+        response += "}"  # Attempt to fix truncated JSON
 
-        results = parse_and_execute_plan(plan_json)
+    #print(f"[DEBUG] Jarvis Response: {response}")
+    try:
+        response_json = json.loads(response, strict=False)
+    except json.JSONDecodeError:
+        print("[DEBUG] Failed to parse JSON. Response was: " + response)
+        return "I'm sorry, Sir, but I couldn't understand the response from Jarvis."
+    
+    intent = response_json.get("type")
+
+    if intent == "plan":
+        results = parse_and_execute_plan(response_json)
         faild_actions = []
+        vision_response = None
         for res in results:
             action = res['action']
             status = res['status']
@@ -605,26 +591,31 @@ def process_user_input(user_input):
         if vision_response:
             return vision_response
         
-        plan_json_goal = plan_json.get("goal", "the requested tasks")
+        plan_json_goal = response_json.get("goal", "the requested tasks")
         add_logs(f"Plan executed successfully: {plan_json_goal}")
         plan_json_goal = plan_json_goal.replace("User wants to ", "") # removed the first "User wants to" if exists
         return f"Yes sir, I have completed the plan for {plan_json_goal}."
                 
     
-    if intent == "CHAT":
-        chat_prompt = f""" [CHAT MODE]: "{user_input}" """
-        return ask_jarvis(chat_prompt)
+    if intent == "chat":
+        return response_json.get("response", "I'm sorry, Sir, but I couldn't generate a response.")
     
     else:
         return "I'm sorry, Sir, but I couldn't determine the intent of your request."
         
 
 if __name__ == "__main__":
+    init_start_time = time.time()
     initialize_memory()
+    init_end_time = time.time()
+    print(f"Jarvis initialized in {init_end_time - init_start_time:.2f} seconds. Memory initialized with {len(memory)} entries.")
     while True:
         user_input = input("You: ")
         if user_input.lower() in ["exit", "quit"]:
             print("Exiting Jarvis. Goodbye, Sir.")
             break
+        start_time = time.time()
         response = process_user_input(user_input)
         print(f"Jarvis: {response}")
+        end_time = time.time()
+        print(f"Execution Time: {end_time - start_time:.2f} seconds")
