@@ -160,6 +160,9 @@ def build_exe(target_dir):
         "--workpath", os.path.join(target_dir, "build"),
         "--specpath", os.path.join(target_dir, "build"),
         "--paths", target_dir,  # Ensure it can find local modules
+        "--collect-all=core",    
+        "--collect-all=ui",       
+        "--collect-all=features",  
         script_path
     ]   
 

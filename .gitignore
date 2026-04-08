@@ -14,6 +14,5 @@ logs/*.log
 __pycache__/
 .vscode/
 # Ignore virtual environment directories
-*.exe
 temp.py
 test_jarvis.py
