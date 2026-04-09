@@ -159,12 +159,25 @@ def build_exe(target_dir):
         "--distpath", target_dir,
         "--workpath", os.path.join(target_dir, "build"),
         "--specpath", os.path.join(target_dir, "build"),
-        "--paths", target_dir,  # Ensure it can find local modules
-        "--collect-all=core",    
-        "--collect-all=ui",       
-        "--collect-all=features",  
+        "--paths", target_dir,
+        
+        # The commands to ensure all modules are packaged
+        "--hidden-import=core.jarvis_brain",
+        "--hidden-import=ui.jarvis_cli",
+        "--hidden-import=ui.jarvis_interface",
+        "--hidden-import=features.jarvis_voice",
+        "--hidden-import=features.jarvis_visualizer",
+        
+        "--hidden-import=AppOpener", "--collect-all=AppOpener",
+        "--hidden-import=pynput", "--collect-all=pynput",
+        "--hidden-import=pyautogui", "--collect-all=pyautogui",
+        "--hidden-import=pycaw", "--collect-all=pycaw",
+        "--hidden-import=edge_tts", "--collect-all=edge_tts",
+        "--hidden-import=sounddevice", "--collect-all=sounddevice",
+        "--hidden-import=ollama", "--collect-all=ollama",
+        
         script_path
-    ]   
+    ]
 
     icon_path = os.path.join(target_dir, "assets", "jarvis_logo.ico")
     if os.path.exists(icon_path):
@@ -212,7 +225,7 @@ def install_logic_thread(update_ui_callback, finished_callback):
         update_ui_callback(50, "Installing Libraries...")
         install_requirements(target_dir)
         
-        update_ui_callback(75, "Compiling Jarvis App (This may take a minute)...")
+        update_ui_callback(75, "Compiling Jarvis App (This may take a few minutes)...")
         build_exe(target_dir)
         
         update_ui_callback(95, "Finalizing Setup...")

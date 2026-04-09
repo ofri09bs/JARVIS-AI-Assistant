@@ -1,7 +1,5 @@
-import sys
 import webbrowser
 import os
-from dotenv import load_dotenv
 import subprocess
 import pyperclip
 from AppOpener import open as open_app
@@ -14,19 +12,6 @@ import io
 import base64 
 import ollama
 import datetime
-
-  
-
-# --- Load Environment Variables ---
-if getattr(sys, 'frozen', False):
-    base_path = os.path.dirname(sys.executable)
-else:
-    base_path = os.path.dirname(os.path.abspath(__file__))
-env_path = os.path.join(base_path, "userdata", ".env")
-if os.path.exists(env_path):
-    load_dotenv(env_path)
-else:
-    load_dotenv() # Fallback
 
 
 JARVIS_INTRUCTIONS = """

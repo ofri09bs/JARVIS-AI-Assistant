@@ -78,7 +78,7 @@ def main():
             
             # Print the final response and the performance metric
             print(f"{COLOR_GREEN}Jarvis: {COLOR_RESET}{response}")
-            print(f"{COLOR_YELLOW}[Executed in {elapsed_time:.2f}s]{COLOR_RESET}\n")
+            #print(f"{COLOR_YELLOW}[Executed in {elapsed_time:.2f}s]{COLOR_RESET}\n")
 
         except KeyboardInterrupt:
             # Handle Ctrl+C exit gracefully without crashing the console
