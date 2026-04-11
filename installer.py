@@ -167,6 +167,7 @@ def build_exe(target_dir):
         "--hidden-import=ui.jarvis_interface",
         "--hidden-import=features.jarvis_voice",
         "--hidden-import=features.jarvis_visualizer",
+        "--hidden-import=features.jarvis_cron",
         
         "--hidden-import=AppOpener", "--collect-all=AppOpener",
         "--hidden-import=pynput", "--collect-all=pynput",
@@ -175,6 +176,7 @@ def build_exe(target_dir):
         "--hidden-import=edge_tts", "--collect-all=edge_tts",
         "--hidden-import=sounddevice", "--collect-all=sounddevice",
         "--hidden-import=ollama", "--collect-all=ollama",
+        "--hidden-import=dotenv", "--collect-all=dotenv",
         
         script_path
     ]

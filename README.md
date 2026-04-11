@@ -97,8 +97,11 @@ The installation takes about **2 to 5 minutes**.
 
 ### 4. Configure .env file
 Create an `.env` file and write there the following credentials:
+
 `EMAIL_ADDRESS=YOUR_EMAIL_ADDRESS`
+
 `APP_PASSWORD=YOUR_APP_PASSWORD`
+
 *[Get your app password here](https://support.google.com/accounts/answer/185833?hl=en)*
 
 ## ▶️ Usage
