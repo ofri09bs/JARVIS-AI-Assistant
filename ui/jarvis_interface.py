@@ -2,7 +2,7 @@ import sys
 import psutil
 import datetime
 import threading
-import queue
+import queue 
 import os
 import requests
 import logging
@@ -15,6 +15,7 @@ from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap, QPalette, QBrush
 from PyQt6.QtWidgets import QPushButton
 
 from core import jarvis_brain
+from core.jarvis_brain import notification_queue
 from features import jarvis_visualizer
 from features import jarvis_voice
     
@@ -174,6 +175,26 @@ class JarvisMainWindow(QWidget):
         self.anim_timer = QTimer(self)
         self.anim_timer.timeout.connect(self.update_animation)
         self.anim_timer.start(30)
+
+        self.queue_checker = QTimer(self)
+        self.queue_checker.timeout.connect(self.process_queue)
+        self.queue_checker.start(500)
+
+    def process_queue(self):
+        while not notification_queue.empty():
+            try:
+                task = notification_queue.get_nowait()
+                
+                if task["type"] == "speak":
+                    message = task["message"]
+                    print(f"[GUI] Jarvis is speaking: {message}")
+                    threading.Thread(target=jarvis_voice.speak, args=(message,), daemon=True).start()
+                    
+                elif task["type"] == "update_ui":
+                    pass 
+                    
+            except queue.Empty:
+                break
 
     def update_animation(self):
         global rotation_angle

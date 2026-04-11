@@ -1,8 +1,11 @@
 import os
 import sys
+import threading
+from features.jarvis_cron import start_cron_loop
+import subprocess
 
 # Enable ANSI colors in Windows terminal
-os.system("")
+subprocess.Popen('', shell=True)  # This is a hack to enable ANSI escape codes in Windows terminals
 
 # --- Style Constants ---
 COLOR_CYAN = '\033[96m'
@@ -13,7 +16,7 @@ COLOR_RESET = '\033[0m'
 
 def clear_screen():
     # Clear the terminal screen dynamically based on the OS
-    os.system('cls' if os.name == 'nt' else 'clear')
+    subprocess.run(['cls'] if os.name == 'nt' else ['clear'], shell=True)
 
 def print_main_menu():
     # ASCII Art for Jarvis
@@ -24,7 +27,7 @@ def print_main_menu():
     _/_/ \_/ \_|_\\_|_\\ \___/  _|_|___/
     {COLOR_RESET}"""
     print(logo)
-    print(f"{COLOR_YELLOW}=== Main System Initialization ==={COLOR_RESET}\n")
+    print(f"{COLOR_YELLOW}=== Main System Initialization ==={COLOR_RESET}")
     print("Please select interface mode:")
     print(f"  [{COLOR_GREEN}1{COLOR_RESET}] Command Line Interface (CLI)")
     print(f"  [{COLOR_GREEN}2{COLOR_RESET}] Graphical User Interface (GUI)")
@@ -32,6 +35,7 @@ def print_main_menu():
 
 def run_main():
     # Main entry point for the application launcher
+    threading.Thread(target=start_cron_loop, daemon=True).start()  # Start the cron loop in a separate thread
     while True:
         clear_screen()
         print_main_menu()

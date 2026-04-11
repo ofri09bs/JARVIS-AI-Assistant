@@ -2,6 +2,9 @@ import sys
 import time
 import os
 from core import jarvis_brain
+import threading
+import queue
+from core.jarvis_brain import notification_queue
 
 # ANSI color codes for terminal styling
 COLOR_CYAN = '\033[96m'
@@ -34,13 +37,33 @@ def clear_screen():
     # Clear the terminal screen dynamically based on the OS
     os.system('cls' if os.name == 'nt' else 'clear')
 
+def cli_queue_listener():
+    # Infinite loop that checks the queue while the user is typing
+    while True:
+        try:
+            task = notification_queue.get_nowait()
+            if task["type"] == "speak":
+                message = task["message"]
+                
+                print(f"\n{COLOR_GREEN}Jarvis: {COLOR_RESET}{message}") 
+                print("You: ", end="", flush=True)  # Re-print the input prompt so the user knows they can still type
+                
+        except queue.Empty:
+            pass
+            
+        time.sleep(0.5)
+
 def main():
+    clear_screen()
     print_banner()
     
     # Initialize the core brain memory before taking inputs
     print(f"{COLOR_YELLOW}Initializing Jarvis core systems...{COLOR_RESET}")
     jarvis_brain.initialize_memory()
     print(f"{COLOR_GREEN}Systems online. Awaiting your command, Sir.{COLOR_RESET}\n")
+
+    # Start the background thread to listen for notifications while the user is typing
+    threading.Thread(target=cli_queue_listener, daemon=True).start()
 
     # Main interaction loop
     while True:
@@ -75,9 +98,9 @@ def main():
             
             # Calculate total elapsed time
             elapsed_time = time.time() - start_time
-            
+            if not response == "":
             # Print the final response and the performance metric
-            print(f"{COLOR_GREEN}Jarvis: {COLOR_RESET}{response}")
+                print(f"{COLOR_GREEN}Jarvis: {COLOR_RESET}{response}")
             #print(f"{COLOR_YELLOW}[Executed in {elapsed_time:.2f}s]{COLOR_RESET}\n")
 
         except KeyboardInterrupt:

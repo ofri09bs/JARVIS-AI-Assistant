@@ -4,13 +4,18 @@
 
 An advanced, Iron Man-inspired desktop AI agent built with Python.
 
-**jarvis 5.0 is not just a chatbot.** It creates its own code in real-time. It features a sophisticated **Agentic Workflow** that classifies intent, plans **complex multi-step** tasks using JSON, and safely executes them on your PC.
+**JARVIS 6.0 is not just a chatbot.** It is a fully autonomous **OS-Level Agent** that operates using a sophisticated **Agentic ReAct Workflow**. Instead of relying on pre-coded command lists, JARVIS dynamically "thinks", selects tools, observes the results, and corrects itself in real-time to achieve complex goals—all running entirely locally on your machine.
 
-Jarvis can execute almost **every complex task you will give him**, such as: `Jarvis, I want to code. Open VS Code, create a new python file called 'test.py', and write a Hello World loop inside it. also set the volume to 30% and open youtube for me and search there "Avengers Doomsday leaks" please `. (Jarvis will open VS code , creat a new file , paste there the code , open youtube and searchs there , and also sets the computers volume to 30%. And all of this without ONE precodded command!)
+Jarvis can execute abstract, multi-step tasks such as: `Jarvis, read my last 5 emails, summarize any important updates, and then schedule a reminder to write a reply tomorrow.` Jarvis will fetch the emails via IMAP, read them, summarize the content, speak the result to you, and independently schedule a background cron task.
 
 <img width="1913" height="976" alt="image" src="https://github.com/user-attachments/assets/6ddb14de-41ee-497c-b41f-6be9aafb6e20" />
 
 ## 🚀 Key Features
+
+### True Agentic Loop (ReAct)
+* **Dynamic Tool Selection:** JARVIS doesn't use hardcoded paths. It uses a strict JSON-enforced ReAct (Reason + Act) loop to chain tools together (e.g., `cmd` -> `read` -> `speak` -> `DONE`).
+* **Self-Correction:** If JARVIS hallucinates or encounters an error, the local system catches it, feeds the error back into the loop, and forces the LLM to correct its JSON output autonomously.
+* **Cron Task:** It can schedule recurring tasks (cron) and alert and check them at regular times.
 
 ### Dual Interfaces
 - **GUI Mode:** A futuristic Glass-morphism interface showing real-time stats (CPU, RAM, Disk Space, Weather) and audio visualization.
@@ -18,7 +23,6 @@ Jarvis can execute almost **every complex task you will give him**, such as: `Ja
 *Idea for the future: Integration with Discord*
 
 ### Desktop Automation
-* **Tactical Typing:** Solves the "focus stealing" issue by minimizing the UI, waiting for the active window, and using **Tactical Paste** (Clipboard Injection) instead of slow keystrokes.
 * **Smart App Launcher:** A 3-layer launch system: `Custom Aliases` -> `System Commands` -> `AppOpener` (Fuzzy Search). It knows that "VS Code" means `code` and "Chrome" means `chrome.exe`.
 * **Local Screen Analysis:** Can capture your screen and analyze visual data entirely locally using Ollama vision capabilities.
 
@@ -26,13 +30,13 @@ Jarvis can execute almost **every complex task you will give him**, such as: `Ja
 * **Neural Voice:** Uses **Edge-TTS** for high-quality British/American speech.
 * **Time Awareness:** Jarvis dynamically knows the current system time, allowing him to schedule tasks, manage exam deadlines, and understand temporal context.
 
-##  Core Architecture (The Brain)
+## ⚙️ Core Architecture (The Brain)
 
-Unlike standard assistants, JARVIS uses a dynamic **Router-Planner-Executor** model running on your local GPU/CPU:
+JARVIS operates on a dynamic **Router-Planner-Executor** model:
 
-1.  **⚡ Fast Router:** A static engine handles common hardcoded commands instantly and delegates complex reasoning to the LLM.
-2.  **📝 JSON Planner:** Powered by **Local Ollama Models (Gemma)**. It breaks down abstract goals into a list of **Primitive Actions**.
-3.  **🛠️ Safe Executor:** A Python engine that parses the JSON plan and safely triggers tools from a strict internal Registry.
+1.  **The ReAct Loop (`jarvis_brain.py`):** The core engine. It feeds the user's prompt to the local LLM, receives a JSON tool call, executes the tool, and appends the `TOOL RESULT` back to the LLM's memory until the LLM explicitly calls the `DONE` action.
+2.  **The Background Listener (`jarvis_cron.py`):** A daemon thread that monitors `cron_schedule.json`. When a task is due, it wakes up the ReAct loop invisibly in the background.
+3.  **The Tool Router:** Safely maps LLM intents to Python functions, handling alias corrections to prevent execution failures.
 
 ## 🛠️ Tech Stack
 
@@ -63,17 +67,18 @@ JARVIS-AI-Assistant/
 └── features/                # Additional Capabilities
     ├── __init__.py
     ├── jarvis_voice.py
+    ├── jarvis_cron.py
     └── jarvis_visualizer.py
 ```
 
 
 ## 📦 Installation
-Since Jarvis runs entirely locally, you **do not** need any API keys.
+Since Jarvis runs entirely locally, you **do not** need external API keys (except a standard Google App Password for IMAP features).
 
 ### 1. Prerequisites (Crucial)
 You must have **Ollama** installed on your system to run the AI model locally.
 
-1. Download and install [[Ollama](https://ollama.com/)].
+1. Download and install [Ollama](https://ollama.com/).
 
 2. Open your terminal/CMD and run:
 
@@ -90,23 +95,22 @@ The installation takes about **2 to 5 minutes**.
 
 2. Click Install. The installer will automatically download a portable Python environment, pull the latest code, install all dependencies without touching your system's Python, and create a Desktop Shortcut.
 
+### 4. Configure .env file
+Create an `.env` file and write there the following credentials:
+`EMAIL_ADDRESS=YOUR_EMAIL_ADDRESS`
+`APP_PASSWORD=YOUR_APP_PASSWORD`
+*[Get your app password here](https://support.google.com/accounts/answer/185833?hl=en)*
 
 ## ▶️ Usage
 Run the **Jarvis Assistant** desktop shortcut, or execute `main.py`.
 
-You will be greeted by the Main System Initialization menu:
+You will be greeted by the Main System Menu:
 
-1. **Command Line Interface (CLI)**: Best for fast, text-based tasks, coding help, and raw speed.
+1. **Command Line Interface (CLI):** Best for fast, text-based tasks, coding help, and raw speed.
 
-2. **Graphical User Interface (GUI)**: Best for voice interaction, screen stats, and audio visualization.
+2. **Graphical User Interface (GUI):** Best for voice interaction, screen stats, and audio visualization.
 
-In **GUI Mode**:
-
-- **To Speak**: Click the Microphone Icon (it will turn Cyan).
-
-- **To Stop**: Click the Microphone Icon again.
-
-- **Typing**: You can always type commands in the text box and press Enter.
+*(Note: The Cron Background Thread automatically starts upon launching the main menu).*
 
 
 ## ⚠️ Security Notice

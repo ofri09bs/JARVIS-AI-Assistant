@@ -12,6 +12,20 @@ import io
 import base64 
 import ollama
 import datetime
+import queue
+import imaplib
+import email
+from email.header import decode_header
+from dotenv import load_dotenv
+import sys
+
+if getattr(sys, 'frozen', False):
+    application_path = os.path.dirname(sys.executable)
+else:
+    application_path = os.path.dirname(os.path.abspath(__file__))
+
+env_path = os.path.join(application_path, '.env')
+load_dotenv(dotenv_path=env_path)
 
 
 JARVIS_INTRUCTIONS = """
@@ -25,7 +39,7 @@ CRITICAL INSTRUCTION: You MUST ALWAYS return ONLY a strictly valid JSON object.
 Do NOT use markdown code blocks (like ```json). 
 If you need to write a multi-line file, use the literal characters '\\n' inside the string.
 
-You have two response structures based on the user's intent:
+You have three response structures based on the user's intent:
 
 1. IF THE USER WANTS TO CHAT, ASK A QUESTION, OR YOU NEED TO REPLY:
 Return this JSON format:
@@ -45,6 +59,16 @@ Return this JSON format:
   ]
 }
 
+3. IF THE USER WANTS TO MAKE A CRON JOB OR SCHEDULE A TASK:
+Return this JSON format:
+{
+  "type": "cron",
+  "name": "Name of the cron task",
+  "time": "<INTEGER ONLY. The exact number of MINUTES requested. NO TEXT. e.g. 5>",
+  "prompt": "<CLEAR ENGLISH INSTRUCTIONS of what the agent needs to do when the cron runs. NEVER write code, bash scripts, or tool JSONs here.>"
+}
+  
+
 TOOLS AVAILABLE FOR PLANNING:
 1. "cmd": Run a Windows terminal command. (Args: "command")
 2. "browser": Open a URL. (Args: "url")
@@ -57,14 +81,49 @@ TOOLS AVAILABLE FOR PLANNING:
 9. "remember": Store a fact in long-term memory. (Args: "data")
 10. "recall": Retrieve all stored facts from memory. (No Args)
 11. "analyze_screen": Analyze the screen content and answer a question. (Args: "command")
+12. "email_imap": Check the latest emails in the inbox and return sender + subject. (Args: "count" - integer for how many recent emails to check, default 5)
 
 CONTEXT AWARENESS:
 If the user says something short like "yes" or "do it", check the context of the conversation to determine what they are agreeing to, and execute the plan accordingly.
 """
 
+AGENT_INSTRUCTIONS = """
+You are J.A.R.V.I.S., a highly capable autonomous AI assistant.
+You are operating in an Agentic Loop. You must complete the user's request by deciding which tool to use next.
+
+AVAILABLE TOOLS:
+1. "cmd": Run a Windows terminal command. (Args: "command")
+2. "browser": Open a URL. (Args: "url")
+3. "write": Create/Overwrite a text file. (Args: "path", "content")
+4. "read": Read a file content. (Args: "path")
+5. "open_app": Open an application by name. (Args: "app_name" - PREFERRED: Use common exe name like "code", "calc", "chrome")
+6. "keyboard_press": Simulate keyboard press for SHORTCUTS only. (Args: "keys" - separated by +, e.g., "ctrl+shift+n")
+7. "set_volume": Set system volume. (Args: "level" - integer 0-100)
+8. "type_text": Type text into the current focused application. (Args: "text")
+9. "remember": Store a fact in long-term memory. (Args: "data")
+10. "recall": Retrieve all stored facts from memory. (No Args)
+11. "analyze_screen": Analyze the screen content and answer a question. (Args: "command")
+12. "speak": Speak a message to the user through the notification system. (Args: "text")
+13. "DONE": Special action to indicate that the plan is complete and no further actions are needed.
+14. "email_imap": Check the latest emails in the inbox and return sender + subject. (Args: "count" - integer for how many recent emails to check, default 5)
+
+
+CRITICAL RULES:
+1. You must respond ONLY with a single, valid JSON object. 
+2. DO NOT wrap the JSON in markdown code blocks (e.g., no ```json). Just output the raw JSON.
+3. DO NOT include any conversational text, thoughts, or explanations outside the JSON.
+4. The JSON must exactly match this structure: {"action": "tool_name", "params": {"key": "value"}}
+5. If you need information you don't have, use a tool. The system will execute it and provide you with the results in the next turn.
+6. Once you have all the necessary information, use the "speak" tool to deliver the final summary or answer to the user.
+7. If the task requires no vocal response, use the "DONE" action.
+8. USE ONLY THE TOOLS LISTED ABOVE. DO NOT INVENT TOOLS like 'read_file' or 'get_time'. If you need to read a file or get the time, use "execute_command" to run the appropriate terminal command.
+"""
+
 memory = []
 MEMORY_FILE = "jarvis_memory.json"
-
+notification_queue = queue.Queue()
+EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
+APP_PASSWORD = os.getenv("APP_PASSWORD")
 
 # ***************** Tool Implementations ***************** #
 
@@ -113,7 +172,8 @@ MODIFIERS = {
     "volume_up": Key.media_volume_up,
     "volume_down": Key.media_volume_down,
 }
-
+# Tools that require special handling for agentic planning
+AGENTIC_TOOLS = ["analyze_screen","recall","read","email_imap"] 
 
 def tool_cmd_run(command):
 
@@ -292,7 +352,8 @@ def tool_analyze_screen(command):
         options={
             'temperature': 0.1,
             'num_predict' : 512
-        }
+        },
+        format="json"
         )
         return response['message']['content']
     
@@ -300,6 +361,50 @@ def tool_analyze_screen(command):
         #print(f"[DEBUG] Error in tool_analyze_screen: {str(e)}")
         return f"Error analyzing screen: {str(e)}"
 
+
+def tool_speak(text):
+    global notification_queue
+    notification_queue.put({
+        "type": "speak",
+        "message": text
+    })
+    return f"Spoken to user: {text}"
+
+
+def tool_email_imap(count=5):
+    try:
+        mail = imaplib.IMAP4_SSL("imap.gmail.com")
+        mail.login(EMAIL_ADDRESS, APP_PASSWORD)
+        mail.select("inbox")
+        
+        status, messages = mail.search(None, "ALL")
+        email_ids = messages[0].split()
+        if not email_ids:
+            return "No emails found in the inbox."
+            
+        latest_ids = email_ids[-count:]
+        email_data = []
+        for e_id in latest_ids:
+            res, msg_data = mail.fetch(e_id, "(RFC822)")
+            for response_part in msg_data:
+                if isinstance(response_part, tuple):
+                    msg = email.message_from_bytes(response_part[1])
+        
+                    subject, encoding = decode_header(msg["Subject"])[0]
+                    if isinstance(subject, bytes):
+                        subject = subject.decode(encoding if encoding else "utf-8")
+                        
+                    sender = msg.get("From")
+                    email_data.append(f"From: {sender} | Subject: {subject}")
+                    
+        mail.logout()
+        return "\n".join(email_data)
+        
+    except imaplib.IMAP4.error:
+        return "Authentication failed. Please check your Email and App Password."
+    except Exception as e:
+        return f"An error occurred: {str(e)}"
+        
     
 # Actions Registry for Planner
 ACTIONS_REGISTRY = {
@@ -313,7 +418,9 @@ ACTIONS_REGISTRY = {
     "type_text": tool_type_text,
     "remember": tool_remember,
     "recall": tool_recall,
-    "analyze_screen": tool_analyze_screen
+    "analyze_screen": tool_analyze_screen,
+    "speak": tool_speak,
+    "email_imap": tool_email_imap
 }
 
 
@@ -335,7 +442,7 @@ def ask_jarvis(input):
 
     memory.append({"role": "user", "content": input})
     try:
-        response = ollama.chat(model="gemma4:e4b", messages=memory, options={'num_predict': 2048})
+        response = ollama.chat(model="gemma4:e4b", messages=memory, options={'num_predict': 2048}, format="json")
         memory.append({"role": "assistant", "content": response['message']['content']})
         return response['message']['content']
     except Exception as e:
@@ -368,7 +475,7 @@ def classify_intent(command):
     Return ONLY one word: PLAN or CHAT.
     """
 
-    response = ollama.chat(model="qwen2.5:0.5b", messages=[{"role": "user", "content": prompt}])
+    response = ollama.chat(model="qwen2.5:0.5b", messages=[{"role": "user", "content": prompt}], format="json")
     response = response['message']['content']
     #print(f"[DEBUG] Intent Classification Response: {response}")
     return response.strip()
@@ -469,11 +576,84 @@ def process_hardcoded_command(command):
     return None
 
 
-# Parses and executes the plan JSON
-def parse_and_execute_plan(plan_json):    
-    results = []
-    #print(f"[DEBUG] Executing Plan: {plan_json.get('goal')}")
+def start_agentic_loop(message_history):
+    max_steps = 5
+    step_count = 0
+    error_count = 0
+    final_output = ""
+    message_history.append({"role": "system", "content": "Entering agentic execution mode. please return 'DONE' when the plan is complete."})
+    while step_count < max_steps:
+        print(f"[DEBUG] Step {step_count}: Sending to LLM: {message_history[-1]['content']}")
+        step_count += 1
+        response = ollama.chat(model="gemma4:e4b", messages=message_history, options={'num_predict': 2048}, format="json")
+        response_content = response['message']['content']
+        print(f"[DEBUG] Step {step_count}: LLM Response: {response_content}")
+        try:
+            response = clean_json_response(response_content)
+            response_json = json.loads(response_content)
+            action = response_json.get("action") or response_json.get("tool_name") or response_json.get("name")
+            params = response_json.get("params", {}) or response_json.get("args") or response_json.get("arguments") or response_json.get("tool_input") or {}
+            action_func = ACTIONS_REGISTRY.get(action) 
+        except json.JSONDecodeError:
+            print(f"[DEBUG] Failed to parse JSON. LLM Response was: {response_content}")
+            print("[ERROR] LLM hallucinated non-JSON response. Retrying...")
+            message_history.append({
+                "role": "system", 
+                "content": "SYSTEM ERROR: You must respond ONLY with a valid JSON format containing 'action' and 'params'."
+            })
+            error_count += 1
+            continue
 
+        if action == "DONE":
+            print("[DEBUG] Agentic loop completed successfully.")
+            break
+
+        elif action == "speak":
+            message = params.get("text", "")
+            tool_speak(message)
+            final_output += message + "\n"
+
+        if action_func:
+            try:
+                result = action_func(**params)
+                message_history.append({
+                    "role": "system", 
+                    "content": f"Action '{action}' executed with result: {result}. If the original goal is now complete, respond with 'DONE'. Otherwise, provide the next action in JSON format."
+                })
+            except Exception as e:
+                message_history.append({
+                    "role": "system", 
+                    "content": f"Error executing action '{action}': {str(e)}. Please try again or respond with 'DONE' if the plan cannot be completed."
+                })
+
+        else:
+            message_history.append({
+                "role": "system", 
+                "content": f"Error: Action '{action}' is not recognized. Please provide a valid action or respond with 'DONE' if the plan cannot be completed."
+            })
+            error_count += 1
+
+        if error_count >= 3:
+            message_history.append({
+                "role": "system",
+                "content": f"Remember your instructions!: {AGENT_INSTRUCTIONS}"
+            })
+
+    if step_count >= max_steps:
+        print("[DEBUG] Agentic loop reached maximum steps without completion. Exiting loop.")
+        
+
+    return final_output
+        
+
+
+# Parses and executes the plan JSON
+def parse_and_execute_plan(plan_json, original_prompt):
+    results = []
+    agent_messages_history = [{"role": "system", "content": AGENT_INSTRUCTIONS}, {"role": "user", "content": original_prompt}]
+    return_response = True
+    agent_response = ""
+    #print(f"[DEBUG] Executing Plan: {plan_json.get('goal')}")
     for step in plan_json.get("plan", []):
         action_name = step.get("action")
         params = step.get("params", {})
@@ -482,27 +662,11 @@ def parse_and_execute_plan(plan_json):
         if action_func:
             #print(f"[DEBUG] Executing Action: {action_name} with params {params}")
 
-            if action_func == tool_analyze_screen: # Special handling for analyze_screen
-                try:
-                    #print(f"[DEBUG] Capturing screen for analyze_screen action.")
-                    vision_raw_response = action_func(**params)
-                    integration_prompt = f"""
-                    [QUESTION MODE]:
-                    CONTEXT: The user asked to analyze the screen regarding: "{params.get('command')}".
-                    VISUAL DATA FROM SYSTEM: "{vision_raw_response}"
-                    
-                    INSTRUCTION: Based ONLY on the visual data above, answer the user's request directly and in detail.
-                    """
-
-                    final_response = ask_jarvis(integration_prompt)
-                    #print(f"[DEBUG] Final Jarvis Interpretation: {final_response}")
-                    results.append({"action": f"{action_name.replace("_", " ")}", "status": "success", "response": final_response})
-                    continue  
-
-                except Exception as e:
-                    results.append({"action": f"{action_name.replace("_", " ")}", "status": "failed"})
-                    #print(f"[DEBUG] Action Failed: {str(e)}")
-                    continue
+            if action_name in AGENTIC_TOOLS:
+                return_response = False # No static response needed at the end
+                agent_response = start_agentic_loop(agent_messages_history + [{"role": "system", "content": f"Next action to execute: {action_name} with params {params}"}])
+                results.append({"action": f"{action_name.replace('_', ' ')}", "status": "success"})
+                break # Exit the loop after agentic execution since it handles the rest of the plan internally                
 
             try:
                 result = action_func(**params)
@@ -518,12 +682,22 @@ def parse_and_execute_plan(plan_json):
         else:
             results.append({"action": f"{action_name.replace("_", " ")}", "status": "failed"})
 
-    return results
+    return results, return_response, agent_response
 
 def clean_json_response(text):
+    import re
     text = text.strip()
     if text.startswith("```"):
         text = text.replace("```json", "").replace("```", "").strip()
+    
+    try:
+        json.loads(text)
+        return text
+    except json.JSONDecodeError:
+        # Attempt to extract JSON from the text using regex
+        json_match = re.search(r'\{.*\}', text, re.DOTALL)
+        if json_match:
+            return json_match.group(0)
         
     return text
     
@@ -546,7 +720,7 @@ def process_user_input(user_input):
     if not response.endswith("}"):
         response += "}"  # Attempt to fix truncated JSON
 
-    #print(f"[DEBUG] Jarvis Response: {response}")
+    print(f"[DEBUG] Jarvis Response: {response}")
     try:
         response_json = json.loads(response, strict=False)
     except json.JSONDecodeError:
@@ -556,7 +730,7 @@ def process_user_input(user_input):
     intent = response_json.get("type")
 
     if intent == "plan":
-        results = parse_and_execute_plan(response_json)
+        results, return_response, agent_response = parse_and_execute_plan(response_json,user_input)
         faild_actions = []
         vision_response = None
         for res in results:
@@ -578,12 +752,29 @@ def process_user_input(user_input):
         plan_json_goal = response_json.get("goal", "the requested tasks")
         add_logs(f"Plan executed successfully: {plan_json_goal}")
         plan_json_goal = plan_json_goal.replace("User wants to ", "") # removed the first "User wants to" if exists
-        return f"Yes sir, I have completed the plan for {plan_json_goal}."
+        return f"Yes sir, I have completed the plan for {plan_json_goal}." if return_response else agent_response
                 
     
     if intent == "chat":
         return response_json.get("response", "I'm sorry, Sir, but I couldn't generate a response.")
     
+    if intent == "cron":
+        task_name = response_json.get("name", "Unnamed Task")
+        try:
+            task_time = int(response_json.get("time", 60))
+        except ValueError:
+            task_time = 60
+
+        task_prompt = response_json.get("prompt", "")
+        try:
+            from features.jarvis_cron import add_cron_task
+
+            add_cron_task(task_name, task_time, task_prompt)
+            return f"Cron task '{task_name}' scheduled to run every {task_time} minutes."
+        except Exception as e:
+            print(f"[DEBUG] Failed to schedule cron task: {e}")
+            return f"Sir, I encountered an error while trying to schedule the cron task '{task_name}'."
+
     else:
         return "I'm sorry, Sir, but I couldn't determine the intent of your request."
         

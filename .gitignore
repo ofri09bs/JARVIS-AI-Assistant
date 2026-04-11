@@ -16,3 +16,5 @@ __pycache__/
 # Ignore virtual environment directories
 temp.py
 test_jarvis.py
+user_data/
+cron_schedule.json
