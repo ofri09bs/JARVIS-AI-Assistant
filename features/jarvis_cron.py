@@ -36,10 +36,10 @@ def execute_cron_task(task_name, prompt_to_execute):
     #print(f"[DEBUG] Waking up Jarvis for cron task: {task_name}")
     #print(f"[DEBUG] Goal: {prompt_to_execute}")
     
-    notification_queue.put({
-        "type": "speak",
-        "message": f"Sir, I am now executing your scheduled task: {task_name}."
-    })
+    #notification_queue.put({
+        #"type": "speak",
+        #"message": f"Sir, I am now executing your scheduled task: {task_name}."
+    #})
     
     active_tasks[task_name] = True
 

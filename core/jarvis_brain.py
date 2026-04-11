@@ -117,6 +117,7 @@ CRITICAL RULES:
 6. Once you have all the necessary information, use the "speak" tool to deliver the final summary or answer to the user.
 7. If the task requires no vocal response, use the "DONE" action.
 8. USE ONLY THE TOOLS LISTED ABOVE. DO NOT INVENT TOOLS like 'read_file' or 'get_time'. If you need to read a file or get the time, use "execute_command" to run the appropriate terminal command.
+9. SELF-AWARENESS: Your scheduled background tasks (crons) are saved in the file "cron_schedule.json". If the user asks about your schedule or tasks, you MUST use the "read" tool to read "cron_schedule.json" and summarize it.
 """
 
 memory = []
@@ -124,6 +125,7 @@ MEMORY_FILE = "jarvis_memory.json"
 notification_queue = queue.Queue()
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
 APP_PASSWORD = os.getenv("APP_PASSWORD")
+spoken_response = False
 
 # ***************** Tool Implementations ***************** #
 
@@ -433,7 +435,9 @@ def initialize_memory():
         {"role": "system", "content": JARVIS_INTRUCTIONS},
         {"role":"assistant", "content": "Initialization complete. Jarvis is ready to assist you, Sir."}
     ]
-    
+    # inject to long-term memory file as well
+    long_term_memory = tool_recall()  # This will create the memory file if it doesn't exist and load it into memory
+    memory.append({"role": "system", "content": f"[LONG-TERM MEMORY INJECTION]: {long_term_memory}"})
 
 def ask_jarvis(input):
     global memory
@@ -583,11 +587,11 @@ def start_agentic_loop(message_history):
     final_output = ""
     message_history.append({"role": "system", "content": "Entering agentic execution mode. please return 'DONE' when the plan is complete."})
     while step_count < max_steps:
-        print(f"[DEBUG] Step {step_count}: Sending to LLM: {message_history[-1]['content']}")
+        #print(f"[DEBUG] Step {step_count}: Sending to LLM: {message_history[-1]['content']}")
         step_count += 1
         response = ollama.chat(model="gemma4:e4b", messages=message_history, options={'num_predict': 2048}, format="json")
         response_content = response['message']['content']
-        print(f"[DEBUG] Step {step_count}: LLM Response: {response_content}")
+        #print(f"[DEBUG] Step {step_count}: LLM Response: {response_content}")
         try:
             response = clean_json_response(response_content)
             response_json = json.loads(response_content)
@@ -612,6 +616,8 @@ def start_agentic_loop(message_history):
             message = params.get("text", "")
             tool_speak(message)
             final_output += message + "\n"
+            global spoken_response
+            spoken_response = True
 
         if action_func:
             try:
@@ -633,7 +639,7 @@ def start_agentic_loop(message_history):
             })
             error_count += 1
 
-        if error_count >= 3:
+        if error_count == 3:
             message_history.append({
                 "role": "system",
                 "content": f"Remember your instructions!: {AGENT_INSTRUCTIONS}"
@@ -643,7 +649,7 @@ def start_agentic_loop(message_history):
         print("[DEBUG] Agentic loop reached maximum steps without completion. Exiting loop.")
         
 
-    return final_output
+    return final_output if final_output != "" else "Task could not be completed with agentic execution. Please check the logs for details."
         
 
 
@@ -720,7 +726,7 @@ def process_user_input(user_input):
     if not response.endswith("}"):
         response += "}"  # Attempt to fix truncated JSON
 
-    print(f"[DEBUG] Jarvis Response: {response}")
+    #print(f"[DEBUG] Jarvis Response: {response}")
     try:
         response_json = json.loads(response, strict=False)
     except json.JSONDecodeError:
@@ -752,7 +758,12 @@ def process_user_input(user_input):
         plan_json_goal = response_json.get("goal", "the requested tasks")
         add_logs(f"Plan executed successfully: {plan_json_goal}")
         plan_json_goal = plan_json_goal.replace("User wants to ", "") # removed the first "User wants to" if exists
-        return f"Yes sir, I have completed the plan for {plan_json_goal}." if return_response else agent_response
+        if return_response and not spoken_response:
+            return f"I have completed the plan to {plan_json_goal}."
+        elif not return_response and not spoken_response and agent_response != "":
+            return agent_response
+        else:
+            return ""
                 
     
     if intent == "chat":

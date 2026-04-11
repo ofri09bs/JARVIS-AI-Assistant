@@ -176,7 +176,7 @@ def build_exe(target_dir):
         "--hidden-import=edge_tts", "--collect-all=edge_tts",
         "--hidden-import=sounddevice", "--collect-all=sounddevice",
         "--hidden-import=ollama", "--collect-all=ollama",
-        "--hidden-import=dotenv", "--collect-all=dotenv",
+        "--hidden-import=python-dotenv", "--collect-all=python-dotenv",
         
         script_path
     ]

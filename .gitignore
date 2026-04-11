@@ -17,5 +17,7 @@ __pycache__/
 temp.py
 test_jarvis.py
 user_data/
-cron_schedule.json
+*.json
 Jarvis Assistant.exe
+Data/
+assistant/

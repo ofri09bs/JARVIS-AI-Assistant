@@ -3,6 +3,7 @@ import sys
 import threading
 from features.jarvis_cron import start_cron_loop
 import subprocess
+import dotenv
 
 # Enable ANSI colors in Windows terminal
 subprocess.Popen('', shell=True)  # This is a hack to enable ANSI escape codes in Windows terminals
