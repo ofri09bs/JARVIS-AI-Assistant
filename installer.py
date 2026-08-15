@@ -333,7 +333,7 @@ class InstallerGUI(tk.Tk):
             # launch_jarvis.vbs
             vbs_path = os.path.join(dest, "launch_jarvis.vbs")
             with open(vbs_path, "w") as f:
-                f.write('CreateObject("Wscript.Shell").Run """" & CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName) & "\\launch_jarvis.bat"""", 0, False\n')
+                f.write('CreateObject("Wscript.Shell").Run """" & CreateObject("Scripting.FileSystemObject").GetParentFolderName(WScript.ScriptFullName) & "\\launch_jarvis.bat""", 1, False\n')
 
             # Create Desktop Shortcut
             if self.create_shortcut.get():

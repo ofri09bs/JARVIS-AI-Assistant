@@ -1,5 +1,6 @@
 import os
 import sys
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))  # Add the current directory to sys.path
 import threading
 from features.jarvis_cron import start_cron_loop
 import subprocess

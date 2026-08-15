@@ -693,16 +693,16 @@ def parse_and_execute_plan(plan_json, original_prompt):
             try:
                 result = action_func(**params)
                 if result.startswith("Error"):
-                    results.append({"action": f"{action_name.replace("_", " ")}", "status": "failed"})
+                    results.append({"action": f"{action_name.replace('_', ' ')}", "status": "failed"})
                     #print(f"[DEBUG] Action Failed: {result}")
                 else:
-                    results.append({"action": f"{action_name.replace("_", " ")}", "status": "success"})
+                    results.append({"action": f"{action_name.replace('_', ' ')}", "status": "success"})
 
             except Exception as e:
-                results.append({"action": f"{action_name.replace("_", " ")}", "status": "failed"})
+                results.append({"action": f"{action_name.replace('_', ' ')}", "status": "failed"})
 
         else:
-            results.append({"action": f"{action_name.replace("_", " ")}", "status": "failed"})
+            results.append({"action": f"{action_name.replace('_', ' ')}", "status": "failed"})
 
     return results, return_response, agent_response
 
