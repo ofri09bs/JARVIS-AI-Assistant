@@ -10,7 +10,7 @@ import traceback
 from PyQt6.QtWidgets import (QApplication, QWidget, QVBoxLayout, QHBoxLayout, 
                              QLabel, QProgressBar, QTextEdit, QLineEdit, QFrame,
                              QSizePolicy, QMessageBox)
-from PyQt6.QtCore import QTimer, Qt, QRectF, QSize
+from PyQt6.QtCore import QTimer, Qt, QRectF, QSize, pyqtSignal
 from PyQt6.QtGui import QColor, QPainter, QPen, QPixmap, QPalette, QBrush
 from PyQt6.QtWidgets import QPushButton
 
@@ -36,6 +36,7 @@ COLOR_PANEL_TRANSPARENT = QColor(13, 22, 29, 180)
 COLOR_ACCENT = "#00e5ff"
 COLOR_TEXT = "#ffffff"
 is_voice_mode_active = False
+_main_window = None
 
 BG_IMAGE_PATH = resource_path(os.path.join("assets", "ironman_bg.jpg")) 
 
@@ -159,6 +160,10 @@ setup_error_logging()
 
 # --- MAIN WINDOW CLASS ---
 class JarvisMainWindow(QWidget):
+    weather_signal = pyqtSignal(str)
+    voice_input_signal = pyqtSignal(str)
+    voice_clear_signal = pyqtSignal()
+
     def __init__(self):
         super().__init__()
         self.setWindowTitle("J.A.R.V.I.S MK.42 INTERFACE")
@@ -313,7 +318,8 @@ def voice_loop_task():
         user_text = jarvis_voice.listen_dynamic()
         
         if user_text:
-            ui_components['input'].setText(user_text)
+            if _main_window:
+                _main_window.voice_input_signal.emit(user_text)
             
             # 1.send user text to chat display
             msg_queue.put(("USER", user_text)) 
@@ -328,7 +334,8 @@ def voice_loop_task():
             jarvis_voice.speak(response)
             
             # Clear input field
-            ui_components['input'].clear()
+            if _main_window:
+                _main_window.voice_clear_signal.emit()
             
         if not is_voice_mode_active:
             break
@@ -347,12 +354,11 @@ def get_current_temperature(lat=32.72, lon=35.29, callback=None):
             callback("N/A")
 
 def weather_callback(data):
-    if data != "N/A":
-        ui_components['weather_val'].setText(f"{data}°C")
-    else:
-        ui_components['weather_val'].setText("N/A")
-
-threading.Thread(target=get_current_temperature, args=(32.72, 35.29, weather_callback), daemon=True).start()
+    if _main_window:
+        if data != "N/A":
+            _main_window.weather_signal.emit(f"{data}°C")
+        else:
+            _main_window.weather_signal.emit("N/A")
 
 def update_system_stats():
     cpu = psutil.cpu_percent()
@@ -400,6 +406,8 @@ def run_gui():
     app.setStyleSheet(STYLESHEET)
     
     window = JarvisMainWindow()
+    global _main_window
+    _main_window = window
     
     # --- Main Layout (3 Columns) ---
     main_layout = QHBoxLayout(window)
@@ -482,6 +490,13 @@ def run_gui():
     ui_components['chat'] = chat_box
     ui_components['input'] = input_field
     ui_components['mic_btn'] = btn_mic
+
+    # Connect thread-safe signals
+    window.weather_signal.connect(lambda text: ui_components['weather_val'].setText(text))
+    window.voice_input_signal.connect(lambda text: ui_components['input'].setText(text))
+    window.voice_clear_signal.connect(lambda: ui_components['input'].clear())
+
+    threading.Thread(target=get_current_temperature, args=(32.72, 35.29, weather_callback), daemon=True).start()
 
     # --- Add Columns to Main Layout ---
     main_layout.addLayout(col_left, 1)   # Left (25%)

@@ -1,19 +1,13 @@
 .env
-#every file that starts with tts_ and ends with .mp3
 tts_*.mp3
-# Ignore temporary voice input file
 temp_voice.wav
-# Ignore any other temporary audio files
 *.wav
 *.mp3
-# Ignore log files
 *.log
 logs/*.log
-# Ignore compiled Python files
 *.pyc
 __pycache__/
 .vscode/
-# Ignore virtual environment directories
 temp.py
 test_jarvis.py
 user_data/
@@ -21,3 +15,6 @@ user_data/
 Jarvis Assistant.exe
 Data/
 assistant/
+db_memory/
+core/user_profile.json
+check_db.py

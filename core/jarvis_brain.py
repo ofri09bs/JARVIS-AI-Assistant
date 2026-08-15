@@ -18,11 +18,12 @@ import email
 from email.header import decode_header
 from dotenv import load_dotenv
 import sys
+from core import jarvis_memory
 
 if getattr(sys, 'frozen', False):
     application_path = os.path.dirname(sys.executable)
 else:
-    application_path = os.path.dirname(os.path.abspath(__file__))
+    application_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 env_path = os.path.join(application_path, '.env')
 load_dotenv(dotenv_path=env_path)
@@ -78,10 +79,8 @@ TOOLS AVAILABLE FOR PLANNING:
 6. "keyboard_press": Simulate keyboard press for SHORTCUTS only. (Args: "keys" - separated by +, e.g., "ctrl+shift+n")
 7. "set_volume": Set system volume. (Args: "level" - integer 0-100)
 8. "type_text": Type text into the current focused application. (Args: "text")
-9. "remember": Store a fact in long-term memory. (Args: "data")
-10. "recall": Retrieve all stored facts from memory. (No Args)
-11. "analyze_screen": Analyze the screen content and answer a question. (Args: "command")
-12. "email_imap": Check the latest emails in the inbox and return sender + subject. (Args: "count" - integer for how many recent emails to check, default 5)
+9. "analyze_screen": Analyze the screen content and answer a question. (Args: "command")
+10. "email_imap": Check the latest emails in the inbox and return sender + subject. (Args: "count" - integer for how many recent emails to check, default 5)
 
 CONTEXT AWARENESS:
 If the user says something short like "yes" or "do it", check the context of the conversation to determine what they are agreeing to, and execute the plan accordingly.
@@ -100,13 +99,21 @@ AVAILABLE TOOLS:
 6. "keyboard_press": Simulate keyboard press for SHORTCUTS only. (Args: "keys" - separated by +, e.g., "ctrl+shift+n")
 7. "set_volume": Set system volume. (Args: "level" - integer 0-100)
 8. "type_text": Type text into the current focused application. (Args: "text")
-9. "remember": Store a fact in long-term memory. (Args: "data")
-10. "recall": Retrieve all stored facts from memory. (No Args)
-11. "analyze_screen": Analyze the screen content and answer a question. (Args: "command")
-12. "speak": Speak a message to the user through the notification system. (Args: "text")
-13. "DONE": Special action to indicate that the plan is complete and no further actions are needed.
-14. "email_imap": Check the latest emails in the inbox and return sender + subject. (Args: "count" - integer for how many recent emails to check, default 5)
+9. "analyze_screen": Analyze the screen content and answer a question. (Args: "command")
+10. "speak": Speak a message to the user through the notification system. (Args: "text")
+11. "DONE": Special action to indicate that the plan is complete and no further actions are needed.
+12. "email_imap": Check the latest emails in the inbox and return sender + subject. (Args: "count" - integer for how many recent emails to check, default 5)
 
+IF THE USER WANTS TO EXECUTE A COMMAND OR ACHIEVE A GOAL:
+Break down the goal into a list of PRIMITIVE ACTIONS.
+Return this EXACT JSON format:
+{
+  "type": "plan",
+  "goal": "Brief description of what you are doing",
+  "plan": [
+    {"action": "tool_name", "params": {"key": "value"}}
+  ]
+}
 
 CRITICAL RULES:
 1. You must respond ONLY with a single, valid JSON object. 
@@ -122,6 +129,7 @@ CRITICAL RULES:
 
 memory = []
 MEMORY_FILE = "jarvis_memory.json"
+LOG_FILE = "jarvis_errors.log"
 notification_queue = queue.Queue()
 EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
 APP_PASSWORD = os.getenv("APP_PASSWORD")
@@ -175,7 +183,7 @@ MODIFIERS = {
     "volume_down": Key.media_volume_down,
 }
 # Tools that require special handling for agentic planning
-AGENTIC_TOOLS = ["analyze_screen","recall","read","email_imap"] 
+AGENTIC_TOOLS = ["analyze_screen","read","email_imap","cmd"] 
 
 def tool_cmd_run(command):
 
@@ -203,7 +211,7 @@ def tool_cmd_run(command):
         return f"Error: Command '{command}' is not recognized as safe to execute."
 
     try:
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        result = subprocess.run(command, shell=True, capture_output=True, text=True, errors='replace')
         return result.stdout if result.returncode == 0 else result.stderr
     except Exception as e:
         return f"Error executing command: {str(e)}"
@@ -307,31 +315,13 @@ def set_volume(level: int):
             pyautogui.press("volumeup")
         return f"Volume set to {level}%"
     except Exception as e:
-        return f"Error setting volume: {str(e)}"
-    
+        return f"Error setting volume: {str(e)}"  
 
 def load_memory():
     if not os.path.exists(MEMORY_FILE):
         return {}
     with open(MEMORY_FILE, 'r', encoding='utf-8') as f:
         return json.load(f)
-    
-
-def tool_remember(data):
-    memory_data = load_memory()
-    if "facts" not in memory_data:
-        memory_data["facts"] = []
-
-    memory_data["facts"].append(data)
-    with open(MEMORY_FILE, 'w', encoding='utf-8') as f:
-        json.dump(memory_data, f)
-    
-    return f"Memory updated: {data}"
-
-def tool_recall():
-    memory_data = load_memory()
-    facts = memory_data.get("facts", [])
-    return "\n".join(facts) if facts else "Memory is empty."
 
 
 def encode_image_to_base64(image):
@@ -418,8 +408,6 @@ ACTIONS_REGISTRY = {
     "keyboard_press": tool_keyboard_press,
     "set_volume": tool_set_volume,
     "type_text": tool_type_text,
-    "remember": tool_remember,
-    "recall": tool_recall,
     "analyze_screen": tool_analyze_screen,
     "speak": tool_speak,
     "email_imap": tool_email_imap
@@ -428,6 +416,18 @@ ACTIONS_REGISTRY = {
 
  # ***************** Jarvis Brain Core ***************** #
 
+def load_user_profile():
+    profile_path = os.path.join(application_path, 'core', 'user_profile.json')
+    try:
+        with open(profile_path, 'r', encoding='utf-8') as f:
+            profile = json.load(f)
+            #print(f"[DEBUG] User profile loaded successfully: {profile['personal_info']['name']}")
+            return profile
+    except Exception as e:
+        #print(f"[DEBUG] ERROR loading user profile: {e}")
+        return {}
+
+
 def initialize_memory():
     global memory
     
@@ -435,19 +435,28 @@ def initialize_memory():
         {"role": "system", "content": JARVIS_INTRUCTIONS},
         {"role":"assistant", "content": "Initialization complete. Jarvis is ready to assist you, Sir."}
     ]
-    # inject to long-term memory file as well
-    long_term_memory = tool_recall()  # This will create the memory file if it doesn't exist and load it into memory
-    memory.append({"role": "system", "content": f"[LONG-TERM MEMORY INJECTION]: {long_term_memory}"})
+
+    user_profile = load_user_profile()
+    profile_content = f"User Profile (Know this about the user):\n{json.dumps(user_profile, indent=2)}"
+    #print(f"[DEBUG] Loaded User Profile:\n{profile_content}")
+    memory.append({"role": "system", "content": profile_content})
+
 
 def ask_jarvis(input):
     global memory
     if memory == []:
         initialize_memory()
 
+    past_context = jarvis_memory.retrieve_relevant_context(input, num_results=3)
+    if past_context and "No relevant past context found." not in past_context:
+        memory.append({"role": "system", "content": f"<past_memory>\n{past_context}\n</past_memory>"})
+
     memory.append({"role": "user", "content": input})
     try:
+        #print(f"[DEBUG] Memory Context for Jarvis:\n{json.dumps(memory, indent=2)}")
         response = ollama.chat(model="gemma4:e4b", messages=memory, options={'num_predict': 2048}, format="json")
         memory.append({"role": "assistant", "content": response['message']['content']})
+        jarvis_memory.save_interaction(input, response['message']['content'])
         return response['message']['content']
     except Exception as e:
         #print(f"[DEBUG] Error in ask_jarvis: {str(e)}")
@@ -594,13 +603,15 @@ def start_agentic_loop(message_history):
         #print(f"[DEBUG] Step {step_count}: LLM Response: {response_content}")
         try:
             response = clean_json_response(response_content)
-            response_json = json.loads(response_content)
+            response_json = json.loads(response)
             action = response_json.get("action") or response_json.get("tool_name") or response_json.get("name")
             params = response_json.get("params", {}) or response_json.get("args") or response_json.get("arguments") or response_json.get("tool_input") or {}
             action_func = ACTIONS_REGISTRY.get(action) 
         except json.JSONDecodeError:
-            print(f"[DEBUG] Failed to parse JSON. LLM Response was: {response_content}")
-            print("[ERROR] LLM hallucinated non-JSON response. Retrying...")
+            #print(f"[DEBUG] Failed to parse JSON. LLM Response was: {response_content}")
+            if response_content == "DONE": # Just in case of hallucination
+                break
+            #print("[ERROR] LLM hallucinated non-JSON response. Retrying...")
             message_history.append({
                 "role": "system", 
                 "content": "SYSTEM ERROR: You must respond ONLY with a valid JSON format containing 'action' and 'params'."
@@ -609,7 +620,7 @@ def start_agentic_loop(message_history):
             continue
 
         if action == "DONE":
-            print("[DEBUG] Agentic loop completed successfully.")
+            #print("[DEBUG] Agentic loop completed successfully.")
             break
 
         elif action == "speak":
@@ -618,6 +629,11 @@ def start_agentic_loop(message_history):
             final_output += message + "\n"
             global spoken_response
             spoken_response = True
+            message_history.append({
+                "role": "system", 
+                "content": f"Action 'speak' executed. Message delivered to user. If the original goal is now complete, respond with 'DONE'. Otherwise, provide the next action in JSON format."
+            })
+            continue
 
         if action_func:
             try:
@@ -646,8 +662,8 @@ def start_agentic_loop(message_history):
             })
 
     if step_count >= max_steps:
-        print("[DEBUG] Agentic loop reached maximum steps without completion. Exiting loop.")
-        
+        #print("[DEBUG] Agentic loop reached maximum steps without completion. Exiting loop.")
+        pass
 
     return final_output if final_output != "" else "Task could not be completed with agentic execution. Please check the logs for details."
         
@@ -710,6 +726,8 @@ def clean_json_response(text):
 
 # Main processing function
 def process_user_input(user_input):
+    global spoken_response
+    spoken_response = False
 
     hardcoded_commands = ["open website", "open", "lock computer", "fix this code", "work mode", "matrix protocol"]
     count = sum(1 for cmd in hardcoded_commands if user_input.lower().startswith(cmd))
@@ -730,7 +748,7 @@ def process_user_input(user_input):
     try:
         response_json = json.loads(response, strict=False)
     except json.JSONDecodeError:
-        print("[DEBUG] Failed to parse JSON. Response was: " + response)
+        #print("[DEBUG] Failed to parse JSON. Response was: " + response)
         return "I'm sorry, Sir, but I couldn't understand the response from Jarvis."
     
     intent = response_json.get("type")
@@ -783,7 +801,7 @@ def process_user_input(user_input):
             add_cron_task(task_name, task_time, task_prompt)
             return f"Cron task '{task_name}' scheduled to run every {task_time} minutes."
         except Exception as e:
-            print(f"[DEBUG] Failed to schedule cron task: {e}")
+            #print(f"[DEBUG] Failed to schedule cron task: {e}")
             return f"Sir, I encountered an error while trying to schedule the cron task '{task_name}'."
 
     else:
@@ -792,9 +810,9 @@ def process_user_input(user_input):
 
 if __name__ == "__main__":
     init_start_time = time.time()
-    initialize_memory()
+    #initialize_memory()
     init_end_time = time.time()
-    print(f"Jarvis initialized in {init_end_time - init_start_time:.2f} seconds. Memory initialized with {len(memory)} entries.")
+    #print(f"Jarvis initialized in {init_end_time - init_start_time:.2f} seconds. Memory initialized with {len(memory)} entries.")
     while True:
         user_input = input("You: ")
         if user_input.lower() in ["exit", "quit"]:

@@ -7,6 +7,7 @@ from core.jarvis_brain import start_agentic_loop, notification_queue
 
 
 active_tasks = {}
+_cron_lock = threading.Lock()
 
 def init_cron():
     if not os.path.exists('cron_schedule.json'):
@@ -14,18 +15,19 @@ def init_cron():
             json.dump([], f)
 
 def add_cron_task(task_name, task_time, prompt_to_execute):
-    with open('cron_schedule.json', 'r') as f:
-        schedule = json.load(f)
+    with _cron_lock:
+        with open('cron_schedule.json', 'r') as f:
+            schedule = json.load(f)
 
-    schedule.append({
-        'name': task_name,
-        'time_to_next': (datetime.now() + timedelta(minutes=task_time)).isoformat(),
-        'time_jumps': task_time,
-        'prompt_to_execute': prompt_to_execute
-    })
+        schedule.append({
+            'name': task_name,
+            'time_to_next': (datetime.now() + timedelta(minutes=task_time)).isoformat(),
+            'time_jumps': task_time,
+            'prompt_to_execute': prompt_to_execute
+        })
 
-    with open('cron_schedule.json', 'w') as f:
-        json.dump(schedule, f, indent=4)
+        with open('cron_schedule.json', 'w') as f:
+            json.dump(schedule, f, indent=4)
 
 
 def execute_cron_task(task_name, prompt_to_execute):
@@ -66,23 +68,36 @@ def execute_cron_task(task_name, prompt_to_execute):
 
 
 def check_cron_tasks():
-    with open('cron_schedule.json', 'r') as f:
-        schedule = json.load(f)
+    with _cron_lock:
+        with open('cron_schedule.json', 'r') as f:
+            schedule = json.load(f)
 
-    for task in schedule:
-        #print(f"[DEBUG] Checking task '{task['name']}' scheduled for {task['time_to_next']}")
-        if datetime.now() >= datetime.fromisoformat(task['time_to_next']):
-            task['time_to_next'] = (datetime.now() + timedelta(minutes=task['time_jumps'])).isoformat()
-            
-            threading.Thread(target=execute_cron_task, args=(task['name'], task['prompt_to_execute'])).start()
+        tasks_to_run = []
+        for task in schedule:
+            #print(f"[DEBUG] Checking task '{task['name']}' scheduled for {task['time_to_next']}")
+            if datetime.now() >= datetime.fromisoformat(task['time_to_next']):
+                task['time_to_next'] = (datetime.now() + timedelta(minutes=task['time_jumps'])).isoformat()
+                tasks_to_run.append((task['name'], task['prompt_to_execute']))
 
-    with open('cron_schedule.json', 'w') as f:
-        json.dump(schedule, f, indent=4)
+        with open('cron_schedule.json', 'w') as f:
+            json.dump(schedule, f, indent=4)
+
+    # Spawn threads OUTSIDE the lock to avoid holding it during execution
+    for task_name, prompt in tasks_to_run:
+        threading.Thread(target=execute_cron_task, args=(task_name, prompt)).start()
 
 
 def start_cron_loop():
     init_cron()
     while True:
-        #print(f"[DEBUG] Checking cron tasks at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        check_cron_tasks()
+        try:
+            #print(f"[DEBUG] Checking cron tasks at {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            check_cron_tasks()
+        except Exception as e:
+            # Log error but don't let the cron loop die
+            try:
+                with open('jarvis_errors.log', 'a') as f:
+                    f.write(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] Cron loop error: {str(e)}\n")
+            except:
+                pass
         time.sleep(60)  # 60 seconds

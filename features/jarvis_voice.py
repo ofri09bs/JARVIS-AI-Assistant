@@ -22,8 +22,18 @@ SAMPLE_RATE = 44100
 # Sensitivity settings (works well at 3 according to your log)
 SILENCE_THRESHOLD = 3    
 SILENCE_LIMIT = 2.0      
+MAX_RECORD_SECONDS = 15
 
-pygame.mixer.init()
+_mixer_initialized = False
+
+def _ensure_mixer():
+    global _mixer_initialized
+    if not _mixer_initialized:
+        try:
+            pygame.mixer.init()
+            _mixer_initialized = True
+        except Exception as e:
+            print(f"[Audio Warning] Could not initialize audio mixer: {e}")
 
 def cleanup_old_files():
     """Deletes old MP3 files to prevent accumulation"""
@@ -46,6 +56,10 @@ def speak(text):
     """
     Main speak function with File Locking Fix.
     """
+    _ensure_mixer()
+    if not _mixer_initialized:
+        print(f"[JARVIS SPEAKING (no audio)]: {text}")
+        return
     try:
         # 1. stop current playback if any
         if pygame.mixer.music.get_busy():
@@ -83,7 +97,13 @@ def listen_dynamic():
     
     try:
         with sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype='int16') as stream:
+            recording_start = time.time()
             while True:
+                # Max duration safety check
+                if time.time() - recording_start > MAX_RECORD_SECONDS:
+                    print("\nMax recording duration reached. Processing...")
+                    break
+                    
                 data, overflowed = stream.read(chunk_samples)
                 audio_data = data[:, 0]
                 
